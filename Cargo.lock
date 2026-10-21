@@ -3754,6 +3754,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "goclaw_client"
+version = "0.0.1"
+dependencies = [
+ "anyhow",
+ "bytes",
+ "reqwest 0.12.23",
+ "serde",
+ "serde_json",
+ "url",
+ "workspace-build-acceleration",
+]
+
+[[package]]
 name = "grok_api_client"
 version = "0.0.1"
 dependencies = [
@@ -8738,6 +8751,7 @@ dependencies = [
  "futures 0.3.32",
  "futures-util",
  "gmicloud_client",
+ "goclaw_client",
  "google_sign_in",
  "grok_api_client",
  "hashing",

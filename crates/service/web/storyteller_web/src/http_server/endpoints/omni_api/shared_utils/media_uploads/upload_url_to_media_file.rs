@@ -52,14 +52,27 @@ pub async fn upload_url_to_media_file(
       CommonWebError::BadInputWithSimpleMessage(format!("Failed to download URL: {}", url))
     })?;
 
+  upload_bytes_to_media_file(server_state, user_token, ip_address, &file_bytes, kind, url).await
+}
+
+/// Store already-downloaded media bytes in the ArtCraft media library.
+pub async fn upload_bytes_to_media_file(
+  server_state: &ServerState,
+  user_token: &UserToken,
+  ip_address: &str,
+  file_bytes: &bytes::Bytes,
+  kind: MediaUploadKind,
+  source_description: &str,
+) -> Result<MediaFileToken, CommonWebError> {
+
   // ==================== MIME VALIDATION ==================== //
 
   let mimetype = get_mimetype_for_bytes(file_bytes.as_ref())
     .map(|mimetype| mimetype.to_string())
     .ok_or_else(|| {
-      warn!("Could not determine mimetype for URL: {}", url);
+      warn!("Could not determine mimetype for media source: {}", source_description);
       CommonWebError::BadInputWithSimpleMessage(
-        format!("Could not determine file type for URL: {}", url))
+        format!("Could not determine file type for media source: {}", source_description))
     })?;
 
   if !kind.allowed_mime_types().contains(mimetype.as_str()) {
@@ -70,7 +83,7 @@ pub async fn upload_url_to_media_file(
       .filter(|c| c.is_alphanumeric() || *c == '/')
       .collect::<String>();
     return Err(CommonWebError::BadInputWithSimpleMessage(
-      format!("Unpermitted mime type for URL {}: {}", url, filtered_mimetype)));
+      format!("Unpermitted mime type for media source {}: {}", source_description, filtered_mimetype)));
   }
 
   let video_info = if matches!(kind, MediaUploadKind::Video) {
@@ -95,7 +108,7 @@ pub async fn upload_url_to_media_file(
 
   let hash = sha256_hash_bytes(file_bytes.as_ref())
     .map_err(|err| {
-      warn!("Problem hashing bytes for URL {}: {:?}", url, err);
+      warn!("Problem hashing media source {}: {:?}", source_description, err);
       CommonWebError::server_error_with_message("Could not hash downloaded file")
     })?;
 
@@ -151,7 +164,7 @@ pub async fn upload_url_to_media_file(
   })
     .await
     .map_err(|err| {
-      warn!("Failed to insert media file from URL {}: {:?}", url, err);
+      warn!("Failed to insert media file from source {}: {:?}", source_description, err);
       CommonWebError::server_error_with_message("Could not save downloaded file")
     })?;
 

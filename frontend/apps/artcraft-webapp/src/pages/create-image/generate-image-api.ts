@@ -12,6 +12,7 @@ export interface GenerateImageParams {
   resolution?: string;
   quality?: string;
   imageMediaTokens?: string[];
+  agentId?: string;
 }
 
 // ── Enqueue generation ───────────────────────────────────────────────────
@@ -21,6 +22,7 @@ export async function enqueueImageGeneration(
 ): Promise<{
   success: boolean;
   jobToken?: string;
+  images?: GeneratedImage[];
   error?: string;
   errorCode?: number;
 }> {
@@ -39,6 +41,27 @@ export async function enqueueImageGeneration(
 
   try {
     const api = new OmniGenApi();
+    if (params.agentId) {
+      const response = await api.generateImageWithGoClaw({
+        agent_id: params.agentId,
+        idempotency_token: crypto.randomUUID(),
+        prompt: params.prompt,
+        reference_media_tokens: params.imageMediaTokens,
+      });
+      const mediaApi = new MediaFilesApi();
+      const mediaFiles = await Promise.all(response.media_tokens.map((mediaFileToken) =>
+        mediaApi.GetMediaFileByToken({ mediaFileToken }),
+      ));
+      const images: GeneratedImage[] = mediaFiles
+        .filter((file) => file.success && !!file.data?.media_links?.cdn_url)
+        .map((file) => ({
+          media_token: file.data!.token,
+          cdn_url: file.data!.media_links!.cdn_url!,
+          maybe_thumbnail_template: file.data!.media_links!.maybe_thumbnail_template,
+        }));
+      return { success: true, images };
+    }
+
     const response = await api.generateImage(body);
     if (response.success && response.inference_job_token) {
       return { success: true, jobToken: response.inference_job_token };

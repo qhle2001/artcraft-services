@@ -10,6 +10,9 @@ use crate::http_server::endpoints::omni_gen::cost::splat::omni_gen_splat_cost_ha
 use crate::http_server::endpoints::omni_gen::cost::video::omni_gen_video_cost_handler::omni_gen_video_cost_handler;
 use crate::http_server::endpoints::omni_gen::generate::audio::omni_gen_audio_generate_handler::omni_gen_audio_generate_handler;
 use crate::http_server::endpoints::omni_gen::generate::image::omni_gen_image_generate_handler::omni_gen_image_generate_handler;
+use crate::http_server::endpoints::omni_gen::generate::goclaw::goclaw_generate_handler::{
+  goclaw_agents_handler, goclaw_generate_handler,
+};
 use crate::http_server::endpoints::omni_gen::generate::mesh::omni_gen_mesh_generate_handler::omni_gen_mesh_generate_handler;
 use crate::http_server::endpoints::omni_gen::generate::splat::omni_gen_splat_generate_handler::omni_gen_splat_generate_handler;
 use crate::http_server::endpoints::omni_gen::generate::video::omni_gen_video_generate_handler::omni_gen_video_generate_handler;
@@ -54,6 +57,10 @@ where
           )
       )
       .service(web::scope("/generate")
+          .service(web::resource("/goclaw")
+              .route(web::post().to(goclaw_generate_handler))
+              .route(web::head().to(|| HttpResponse::Ok()))
+          )
           .service(web::resource("/video")
               .route(web::post().to(omni_gen_video_generate_handler))
               .route(web::head().to(|| HttpResponse::Ok()))
@@ -73,6 +80,11 @@ where
           .service(web::resource("/splat")
               .route(web::post().to(omni_gen_splat_generate_handler))
               .route(web::head().to(|| HttpResponse::Ok()))
+          )
+      )
+      .service(web::scope("/goclaw")
+          .service(web::resource("/agents")
+              .route(web::get().to(goclaw_agents_handler))
           )
       )
       .service(web::scope("/models")

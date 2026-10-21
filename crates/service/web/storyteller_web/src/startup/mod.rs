@@ -10,3 +10,4 @@ pub mod setup_internal_api_keys;
 pub mod setup_static_feature_flags;
 pub mod setup_stripe_artcraft;
 pub mod setup_stripe_fakeyou;
+pub mod setup_goclaw;

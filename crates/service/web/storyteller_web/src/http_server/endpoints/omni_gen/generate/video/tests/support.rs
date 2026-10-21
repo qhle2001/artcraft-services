@@ -697,6 +697,7 @@ pub(crate) fn build_test_server_state(pool: MySqlPool, media_cdn_override_url: S
       openai: OpenAiData { api_key: "test".to_string() },
       worldlabs: WorldLabsData { api_key: "test".to_string() },
     },
+    maybe_goclaw_client: None,
     resend: ResendData { api_key: "test".to_string() },
     pager,
     audio_uploads_bucket_root: "test-audio-uploads".to_string(),

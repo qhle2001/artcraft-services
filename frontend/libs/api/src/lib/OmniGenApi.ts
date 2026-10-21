@@ -36,6 +36,24 @@ export interface OmniGenImageGenerateResponse {
   inference_job_token: string;
 }
 
+export interface GoClawImageGenerateRequest {
+  idempotency_token: string;
+  agent_id: string;
+  prompt: string;
+  reference_media_tokens?: string[];
+}
+
+export interface GoClawImageGenerateResponse {
+  content: string;
+  media_tokens: string[];
+}
+
+export interface GoClawAgentInfo {
+  id: string;
+  name: string;
+  description: string;
+}
+
 // ── Video request / response types ───────────────────────────────────────
 
 // Frontend-supplied hints for cost estimation only. IGNORED by generation —
@@ -581,6 +599,21 @@ export class OmniGenApi extends ApiManager {
     return this.post<Record<string, unknown>, OmniGenImageGenerateResponse>({
       endpoint: `${this.getApiSchemeAndHost()}/v1/omni_gen/generate/image`,
       body: stripNulls(dedupeMediaTokenLists(body)),
+    });
+  }
+
+  public async generateImageWithGoClaw(
+    body: GoClawImageGenerateRequest,
+  ): Promise<GoClawImageGenerateResponse> {
+    return this.post<Record<string, unknown>, GoClawImageGenerateResponse>({
+      endpoint: `${this.getApiSchemeAndHost()}/v1/omni_gen/generate/goclaw`,
+      body: stripNulls(dedupeMediaTokenLists(body)),
+    });
+  }
+
+  public async getGoClawAgents(): Promise<{ agents: GoClawAgentInfo[] }> {
+    return this.get<{ agents: GoClawAgentInfo[] }>({
+      endpoint: `${this.getApiSchemeAndHost()}/v1/omni_gen/goclaw/agents`,
     });
   }
 

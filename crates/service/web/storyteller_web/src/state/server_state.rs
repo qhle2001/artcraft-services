@@ -101,6 +101,9 @@ pub struct ServerState {
 
   pub inference_providers: InferenceProviders,
 
+  /// Optional GoClaw gateway used for agent-backed generation.
+  pub maybe_goclaw_client: Option<goclaw_client::GoClawClient>,
+
   pub resend: ResendData,
 
   pub pager: Pager,
