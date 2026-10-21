@@ -34,7 +34,6 @@ use crate::startup::setup_bans::{
   load_static_container_ip_bans, load_troll_user_token_bans,
 };
 use crate::startup::setup_inference_providers::setup_inference_providers;
-use crate::startup::setup_goclaw::setup_goclaw_client;
 use crate::startup::setup_internal_api_keys::setup_internal_api_keys;
 use crate::startup::setup_dashboards::setup_dashboards;
 use crate::startup::setup_seedance_video_bucket::setup_seedance_video_bucket;
@@ -195,7 +194,6 @@ pub async fn setup_dependencies(server_hostname: &str) -> AnyhowResult<SetupResu
     .to_string();
 
   let inference_providers = setup_inference_providers()?;
-  let maybe_goclaw_client = setup_goclaw_client()?;
 
   let resend_api_key = easyenv::get_env_string_required("RESEND_API_KEY")?;
 
@@ -242,7 +240,6 @@ pub async fn setup_dependencies(server_hostname: &str) -> AnyhowResult<SetupResu
     static_api_token_set,
     internal_api_keys: setup_internal_api_keys(),
     inference_providers,
-    maybe_goclaw_client,
     resend: ResendData {
       api_key: resend_api_key,
     },

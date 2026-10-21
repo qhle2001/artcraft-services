@@ -3762,6 +3762,7 @@ dependencies = [
  "reqwest 0.12.23",
  "serde",
  "serde_json",
+ "tokio",
  "url",
  "workspace-build-acceleration",
 ]

@@ -1,48 +1,29 @@
-# GoClaw generation integration
+# Self-hosted GoClaw image generation
 
-ArtCraft calls the separate public generation service deployed alongside GoClaw.
-That service selects and runs the requested GoClaw agent and owns provider
-selection, provider credentials, and generation. ArtCraft authenticates the
-user, resolves reference media tokens to CDN URLs, forwards the user's ArtCraft
-token as the GoClaw user identity, and imports returned images into the user's
-ArtCraft media library.
+ArtCraft can use agents from a separately hosted GoClaw instance. Users connect from the Create Image page; no shared GoClaw URL or token is configured in ArtCraft's `.env`.
 
-## Configuration
+## Connect
 
-Set these variables on the `storyteller-web` service. Both are required to
-enable the integration; omit both to leave it disabled.
+1. Open **Create Image** and select the cable icon next to the model picker.
+2. Enter the public HTTPS URL of your GoClaw instance and a GoClaw API token with permission to list and wake agents.
+3. Select **Connect and load agents**. ArtCraft calls GoClaw `GET /v1/agents` and shows the returned agents in the existing model picker under **GoClaw Agents**.
+4. Choose an agent and generate as usual. The browser remembers only the URL in local storage. The token stays in page memory and must be entered again after the page is reloaded.
 
-```text
-GOCLAW_GENERATION_SERVICE_URL=https://goclaw.example.com
-GOCLAW_API_TOKEN=<service credential authorized for generation>
+The GoClaw gateway must be reachable from the ArtCraft backend, use HTTPS, and present a valid TLS certificate. Requests reject non-public DNS/IP destinations and redirects. ArtCraft sends the token only in the `Authorization: Bearer` header to the configured GoClaw instance.
+
+## Generation flow
+
+ArtCraft sends the selected agent ID, prompt, and the user's reference image CDN URLs in a `POST /v1/agents/{id}/wake` message. GoClaw runs that agent and returns text. To import results into the user's ArtCraft library, the agent must return generated images as Markdown image links hosted by the same GoClaw instance, for example:
+
+```markdown
+![Generated image](https://goclaw.example.com/v1/files/generated/image.png)
 ```
 
-## Image generation endpoint
+ArtCraft downloads only links from the configured GoClaw origin under `/v1/files/` or `/v1/media/`, authenticates those downloads with the same Bearer token, validates the file as an image, and uploads it to the signed-in ArtCraft user's media library. The agent's returned text is included in the API response.
 
-`POST /v1/omni_gen/generate/goclaw` accepts the user's selected GoClaw agent,
-prompt, and optional ArtCraft image references:
+## API endpoints
 
-```json
-{
-  "idempotency_token": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-  "agent_id": "image-agent",
-  "prompt": "A red fox in a snowy forest",
-  "reference_media_tokens": []
-}
-```
+- `POST /v1/omni_gen/goclaw/agents` — accepts `goclaw_url` and `goclaw_api_token`; returns agents visible to that GoClaw credential.
+- `POST /v1/omni_gen/generate/goclaw` — accepts the GoClaw connection, `agent_id`, prompt, idempotency token, and optional ArtCraft reference media tokens; wakes the agent and imports image links.
 
-The response contains any assistant text and the ArtCraft media tokens created
-from image outputs. The browser can load these with the existing media APIs.
-The ArtCraft endpoint currently waits for the generation service call to finish.
-
-## Generation service contract
-
-The ArtCraft adapter expects the GoClaw-side service to implement these routes:
-
-- `POST /v1/generations` with `{ "request_id", "agent_id", "user_id", "prompt", "reference_media": [{ "type": "image", "url": "..." }] }`.
-- The response includes `{ "generation_id", "content", "media": [{ "id", "mime_type", "file_name" }] }` after the agent completes.
-- `GET /v1/generations/{generation_id}/media/{media_id}` returns the generated image bytes.
-
-All requests use `Authorization: Bearer <GOCLAW_API_TOKEN>`. The generation
-service should make `request_id` idempotent and authorize agent access using
-`user_id`.
+Both endpoints require an authenticated ArtCraft session or API key. The GoClaw token is not stored in ArtCraft's database or environment configuration.

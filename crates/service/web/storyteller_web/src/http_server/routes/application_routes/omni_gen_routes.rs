@@ -84,7 +84,7 @@ where
       )
       .service(web::scope("/goclaw")
           .service(web::resource("/agents")
-              .route(web::get().to(goclaw_agents_handler))
+              .route(web::post().to(goclaw_agents_handler))
           )
       )
       .service(web::scope("/models")

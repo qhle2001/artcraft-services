@@ -13,6 +13,8 @@ export interface GenerateImageParams {
   quality?: string;
   imageMediaTokens?: string[];
   agentId?: string;
+  goClawUrl?: string;
+  goClawApiToken?: string;
 }
 
 // ── Enqueue generation ───────────────────────────────────────────────────
@@ -44,6 +46,8 @@ export async function enqueueImageGeneration(
     if (params.agentId) {
       const response = await api.generateImageWithGoClaw({
         agent_id: params.agentId,
+        goclaw_url: params.goClawUrl ?? "",
+        goclaw_api_token: params.goClawApiToken ?? "",
         idempotency_token: crypto.randomUUID(),
         prompt: params.prompt,
         reference_media_tokens: params.imageMediaTokens,

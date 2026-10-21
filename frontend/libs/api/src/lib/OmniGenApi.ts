@@ -38,6 +38,8 @@ export interface OmniGenImageGenerateResponse {
 
 export interface GoClawImageGenerateRequest {
   idempotency_token: string;
+  goclaw_url: string;
+  goclaw_api_token: string;
   agent_id: string;
   prompt: string;
   reference_media_tokens?: string[];
@@ -52,6 +54,11 @@ export interface GoClawAgentInfo {
   id: string;
   name: string;
   description: string;
+}
+
+export interface GoClawConnectionRequest {
+  goclaw_url: string;
+  goclaw_api_token: string;
 }
 
 // ── Video request / response types ───────────────────────────────────────
@@ -611,9 +618,15 @@ export class OmniGenApi extends ApiManager {
     });
   }
 
-  public async getGoClawAgents(): Promise<{ agents: GoClawAgentInfo[] }> {
-    return this.get<{ agents: GoClawAgentInfo[] }>({
+  public async connectGoClaw(
+    body: GoClawConnectionRequest,
+  ): Promise<{ agents: GoClawAgentInfo[] }> {
+    return this.post<Record<string, unknown>, { agents: GoClawAgentInfo[] }>({
       endpoint: `${this.getApiSchemeAndHost()}/v1/omni_gen/goclaw/agents`,
+      body: {
+        goclaw_url: body.goclaw_url,
+        goclaw_api_token: body.goclaw_api_token,
+      },
     });
   }
 
