@@ -13,7 +13,6 @@ import {
   getReferrer,
 } from "@storyteller/common";
 import { refreshSession } from "../../lib/session";
-import { hasActiveSubscription } from "../../lib/billing";
 import { GoogleLoginButton } from "./GoogleLoginButton";
 
 interface SignupFormProps {
@@ -91,13 +90,9 @@ export const SignupForm = ({
       onSuccess();
       return;
     }
-    // Refresh the session and check the subscription in parallel; users without
-    // an active subscription are pushed to pricing, subscribers go home.
-    const [, subscribed] = await Promise.all([
-      refreshSession(true),
-      hasActiveSubscription(),
-    ]);
-    navigate(subscribed ? "/" : "/pricing");
+    // A self-hosted account can use the app without an ArtCraft subscription.
+    await refreshSession(true);
+    navigate("/");
   };
 
   const handleGoogleError = (message: string) => {

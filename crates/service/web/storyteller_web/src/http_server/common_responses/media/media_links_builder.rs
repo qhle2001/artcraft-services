@@ -1,4 +1,4 @@
-use crate::http_server::common_responses::media::cdn_link::{get_cdn_host, new_cdn_url};
+use crate::http_server::common_responses::media::cdn_link::{get_cdn_host, has_custom_media_cdn, new_cdn_url};
 use crate::http_server::common_responses::media::media_domain::MediaDomain;
 use artcraft_api_defs::common::responses::media_links::{MediaLinks, VideoPreviews};
 use bucket_paths::legacy::typified_paths::public::media_files::bucket_file_path::MediaFileBucketPath;
@@ -125,10 +125,12 @@ fn thumbnail_template(media_domain: MediaDomain, server_environment: ServerEnvir
 
   let host = get_cdn_host(media_domain, server_environment);
 
-  // NB(bt,2025-02-01): Development doesn't currently support thumbnails, so serve the full image.
-  match server_environment {
-    ServerEnvironment::Development => Some(format!("{host}{rooted_path}")), // NB(bt,2025-02-01): No thumbnails in development.
-    ServerEnvironment::Production => Some(format!("{host}/cdn-cgi/image/width={{WIDTH}},quality={QUALITY}{rooted_path}"))
+  // Development and self-hosted media domains may not implement Cloudflare's
+  // image transformation endpoint, so return the original object URL there.
+  if server_environment == ServerEnvironment::Development || has_custom_media_cdn() {
+    Some(format!("{host}{rooted_path}"))
+  } else {
+    Some(format!("{host}/cdn-cgi/image/width={{WIDTH}},quality={QUALITY}{rooted_path}"))
   }
 }
 
@@ -145,6 +147,7 @@ fn video_preview_thumbnail_template(media_domain: MediaDomain, server_environmen
   // NB: Development doesn't support cdn-cgi image resizing.
   match server_environment {
     ServerEnvironment::Development => format!("{host}{rooted_path}"),
+    ServerEnvironment::Production if has_custom_media_cdn() => format!("{host}{rooted_path}"),
     ServerEnvironment::Production => format!("{host}/cdn-cgi/image/width={{WIDTH}},quality={QUALITY}{rooted_path}"),
   }
 }

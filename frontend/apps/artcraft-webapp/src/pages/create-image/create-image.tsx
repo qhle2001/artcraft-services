@@ -16,7 +16,6 @@ import {
   MobilePromptForm,
   MobileSelectField,
   MobileFieldButton,
-  MobileCountStepper,
   SettingsDrawer,
   DrawerOptionList,
   DrawerSection,
@@ -39,7 +38,6 @@ import {
   buildAspectRatioItems,
   aspectRatioFromLabel,
 } from "./components/AspectRatioPicker";
-import { GenerationCountPicker } from "./components/GenerationCountPicker";
 import { useGoClawStore } from "../../re-implement/goclaw/goClawStore";
 import {
   ResolutionPicker,
@@ -51,31 +49,18 @@ import {
   buildQualityItems,
   qualityFromLabel,
 } from "./components/QualityPicker";
-import { useImageCostEstimate } from "../../lib/cost-estimate-api";
 import {
   galleryItemToRefImage,
   mergeRefImages,
   toastMergeRefImagesOutcome,
 } from "../../lib/send-to-prompt";
-import {
-  resolveModelOption,
-  resolveModelCount,
-} from "../../lib/resolve-model-setting";
+import { resolveModelOption } from "../../lib/resolve-model-setting";
 import {
   useOmniGenImageModels,
   OMNI_GENERATE_OUTAGE_MESSAGE,
 } from "@storyteller/omni-gen";
-import {
-  getCreatorIconPathForModelId,
-  getCreatorIconSourceForModelId,
-  getModelDescription,
-  getModelFamilyName,
-  getModelInfo,
-  modelCreatorFromBackend,
-} from "@storyteller/model-list";
 import { toast } from "../../components/toast/toast";
 import { useSignupCta } from "../../components/signup-cta-modal";
-import { useInsufficientCredits } from "../../components/insufficient-credits-modal";
 import { SparklesIcon } from "lucide-react";
 
 // ── Constants ────────────────────────────────────────────────────────────
@@ -84,41 +69,11 @@ const DEFAULT_MODEL_ID = "nano_banana_2";
 
 const IMAGE_FILTER = [FilterMediaClasses.IMAGE];
 
-// Store API model data alongside popover items via a lookup map
-let _modelLookup = new Map<string, OmniGenImageModelInfo>();
-
-function buildModelPopoverItems(
-  models: OmniGenImageModelInfo[],
-  selectedId: string,
-): PopoverItem[] {
-  _modelLookup = new Map(models.map((m) => [m.model, m]));
-  return models.map((model) => {
-    const iconSource = getCreatorIconSourceForModelId(model.model);
-    return {
-      label: model.full_name || model.model,
-      selected: model.model === selectedId,
-      description: getModelDescription(model.model, model.extra_info_short),
-      info: getModelInfo(model.model, model.extra_info) || undefined,
-      icon: (
-        <img
-          src={iconSource.src}
-          alt={`${model.model} logo`}
-          className={
-            iconSource.isColor ? "h-4 w-4" : "h-4 w-4 icon-auto-contrast"
-          }
-        />
-      ),
-      action: model.model, // use action to carry the model id
-    };
-  });
-}
-
 // ── Component ────────────────────────────────────────────────────────────
 
 export default function CreateImage() {
   const { user, authChecked } = useAuthCheck();
   const { loggedIn, openSignupCta } = useSignupCta();
-  const openInsufficientCredits = useInsufficientCredits();
   const { promptBoxRef, promptHeight } = usePromptHeight();
 
   // Fetch models from API
@@ -126,8 +81,6 @@ export default function CreateImage() {
   const configuredGoClawAgents = useGoClawStore((state) => state.agents);
   const goClawAgents = useMemo(() => configuredGoClawAgents.filter((agent) => agent.type === "image"), [configuredGoClawAgents]);
   const [selectedGoClawAgentId, setSelectedGoClawAgentId] = useState<string | null>(null);
-  const goClawUrl = useGoClawStore((state) => state.url);
-  const goClawApiToken = useGoClawStore((state) => state.token);
 
   // UI state
   const ui = useCreateImageStore((s) => s.ui);
@@ -145,7 +98,9 @@ export default function CreateImage() {
     return apiModels.find((m) => m.model === DEFAULT_MODEL_ID) ?? apiModels[0];
   }, [apiModels, ui.selectedModelId]);
 
-  const selectedGoClawAgent = goClawAgents.find((agent) => agent.id === selectedGoClawAgentId);
+  const selectedGoClawAgent =
+    goClawAgents.find((agent) => agent.id === selectedGoClawAgentId) ??
+    goClawAgents[0];
 
   // Soft prompt limit from the API; undefined (no model / unset) = unlimited.
   const maxPromptLength = selectedGoClawAgent
@@ -168,16 +123,6 @@ export default function CreateImage() {
     ) ?? ui.aspectRatio;
   const setAspectRatio = useCallback(
     (v: string) => setUi({ aspectRatio: v }),
-    [setUi],
-  );
-  const numImages = resolveModelCount(
-    ui.numImages,
-    selectedModel?.batch_size_options,
-    selectedModel?.batch_size_max,
-    selectedModel?.batch_size_default,
-  );
-  const setNumImages = useCallback(
-    (v: number) => setUi({ numImages: v }),
     [setUi],
   );
   const resolution = resolveModelOption(
@@ -279,37 +224,21 @@ export default function CreateImage() {
   const lightbox = useLightboxNav(flatItems);
 
   // Derived
-  const hasAspectRatios =
-    !selectedGoClawAgent && (selectedModel?.aspect_ratio_options?.length ?? 0) > 0;
-  const hasResolutions =
-    !selectedGoClawAgent && (selectedModel?.resolution_options?.length ?? 0) > 0;
-  const hasQualityOptions =
-    !selectedGoClawAgent && (selectedModel?.quality_options?.length ?? 0) > 0;
+  const hasAspectRatios = false;
+  const hasResolutions = false;
+  const hasQualityOptions = false;
 
-  const modelEstimatedCredits = useImageCostEstimate({
-    model: selectedGoClawAgent ? "" : selectedModel?.model ?? "",
-    aspectRatio: aspectRatio,
-    resolution: hasResolutions ? resolution : undefined,
-    quality: hasQualityOptions ? quality : undefined,
-    numImages,
-    hasReferenceImages: referenceImages.length > 0,
-  });
-  const estimatedCredits = selectedGoClawAgent ? null : modelEstimatedCredits;
+  const estimatedCredits = null;
 
   const modelItems = useMemo(
-    () => [
-      ...buildModelPopoverItems(
-        apiModels,
-        selectedGoClawAgentId ? `goclaw-agent:${selectedGoClawAgentId}` : selectedModel?.model ?? "",
-      ),
-      ...goClawAgents.map((agent): PopoverItem => ({
+    () =>
+      goClawAgents.map((agent): PopoverItem => ({
         label: agent.name,
         description: agent.description || "GoClaw generation agent",
-        selected: agent.id === selectedGoClawAgentId,
+        selected: agent.id === selectedGoClawAgent?.id,
         action: `goclaw-agent:${agent.id}`,
       })),
-    ],
-    [apiModels, goClawAgents, selectedGoClawAgentId, selectedModel?.model],
+    [goClawAgents, selectedGoClawAgent?.id],
   );
   // Family-grouped variant for the desktop picker. The mobile bottom sheet
   // keeps the flat `modelItems` (no flyouts on touch).
@@ -317,17 +246,7 @@ export default function CreateImage() {
   const groupedModelItems = useMemo(
     () =>
       modelPickerStyle === "grouped"
-        ? groupModelItems(modelItems, (item) => {
-            if (item.action?.startsWith("goclaw-agent:")) return "GoClaw Agents";
-            return getModelFamilyName(
-              item.action,
-              modelCreatorFromBackend(
-                item.action
-                  ? _modelLookup.get(item.action)?.model_creator
-                  : undefined,
-              ),
-            );
-          })
+        ? groupModelItems(modelItems, () => "GoClaw Agents")
         : modelItems,
     [modelItems, modelPickerStyle],
   );
@@ -435,15 +354,8 @@ export default function CreateImage() {
         setSelectedGoClawAgentId(item.action.slice("goclaw-agent:".length));
         return;
       }
-      const model = item.action ? _modelLookup.get(item.action) : undefined;
-      if (!model) return;
-      // Only switch the model — aspect ratio / count / resolution / quality are
-      // preserved and resolved against the new model at read time, so the user's
-      // choices survive model switches instead of resetting to defaults.
-      setUi({ selectedModelId: model.model });
-      setSelectedGoClawAgentId(null);
     },
-    [setUi],
+    [],
   );
 
   const handleLibraryImageSelect = useCallback(
@@ -474,10 +386,8 @@ export default function CreateImage() {
       return;
     }
     if (!prompt.trim() || isGenerating) return;
-    if (!selectedModel && !selectedGoClawAgent) {
-      // Models come from an API fetch; without one the submit would be a
-      // silent no-op, which reads as a dead button.
-      toast.error("Models are still loading. Try again in a moment.");
+    if (!selectedGoClawAgent) {
+      toast.error("Configure a GoClaw image agent in Settings before generating.");
       return;
     }
 
@@ -491,8 +401,8 @@ export default function CreateImage() {
     setIsGenerating(true);
     const batchId = startBatch(
       prompt,
-      selectedGoClawAgent ? 1 : numImages,
-      selectedGoClawAgent?.name ?? selectedModel?.full_name ?? selectedModel?.model ?? "GoClaw",
+      1,
+      selectedGoClawAgent.name,
     );
 
     try {
@@ -504,36 +414,21 @@ export default function CreateImage() {
 
       const result = await enqueueImageGeneration({
         prompt: prompt.trim(),
-        model: selectedModel?.model ?? "goclaw",
-        numImages: selectedGoClawAgent ? 1 : numImages,
-        aspectRatio: aspectRatio,
-        resolution: hasResolutions ? resolution : undefined,
-        quality: hasQualityOptions ? quality : undefined,
         imageMediaTokens: imageMediaTokens?.length
           ? imageMediaTokens
           : undefined,
-        agentId: selectedGoClawAgent?.id,
-        goClawUrl: selectedGoClawAgent ? goClawUrl : undefined,
-        goClawApiToken: selectedGoClawAgent ? goClawApiToken : undefined,
+        agentId: selectedGoClawAgent.id,
       });
 
       if (!result.success || (!result.jobToken && !result.images)) {
-        // 402 Payment Required: the user is out of credits. Drop the pending
-        // card and surface the upgrade modal instead of a failed-card error.
-        if (result.errorCode === 402) {
-          dismissBatch(batchId);
-          openInsufficientCredits();
+        // A GoClaw failure is not an ArtCraft credit or subscription event.
+        // Show the backend error and mark the pending item as failed.
+        if (result.errorCode != null && result.errorCode >= 500) {
+          toast.error(OMNI_GENERATE_OUTAGE_MESSAGE);
         } else {
-          // Always toast: batches that fail at enqueue never got a job token,
-          // so the gallery's failed-card rendering never shows them, and a
-          // silent failBatch here looks like the button did nothing.
-          if (result.errorCode != null && result.errorCode >= 500) {
-            toast.error(OMNI_GENERATE_OUTAGE_MESSAGE);
-          } else {
-            toast.error(result.error ?? "Failed to start generation");
-          }
-          failBatch(batchId, result.error ?? "Failed to start generation");
+          toast.error(result.error ?? "GoClaw generation failed");
         }
+        failBatch(batchId, result.error ?? "GoClaw generation failed");
         setIsGenerating(false);
         return;
       }
@@ -578,15 +473,11 @@ export default function CreateImage() {
   }, [
     loggedIn,
     openSignupCta,
-    openInsufficientCredits,
     prompt,
     isGenerating,
     selectedModel,
     selectedGoClawAgent,
-    goClawUrl,
-    goClawApiToken,
     maxPromptLength,
-    numImages,
     aspectRatio,
     resolution,
     hasResolutions,
@@ -627,7 +518,11 @@ export default function CreateImage() {
       onSubmit={handleGenerate}
       isSubmitting={isGenerating}
       credits={estimatedCredits}
-      placeholder="Describe what you want in the image..."
+      placeholder={
+        goClawAgents.length
+          ? "Describe what you want in the image..."
+          : "Configure a GoClaw image agent in Settings first..."
+      }
       autoAdvance={loggedIn && !!prompt.trim() && !isGenerating}
       modelField={
         <div className="flex items-center gap-2">
@@ -705,16 +600,7 @@ export default function CreateImage() {
           )}
         </>
       }
-      countField={
-        !selectedGoClawAgent ? (
-          <MobileCountStepper
-            value={numImages}
-            onChange={setNumImages}
-            max={selectedModel?.batch_size_max ?? 4}
-            options={selectedModel?.batch_size_options}
-          />
-        ) : undefined
-      }
+      countField={undefined}
     />
   );
 
@@ -779,7 +665,11 @@ export default function CreateImage() {
             isSubmitting={isGenerating}
             credits={estimatedCredits}
             maxPromptLength={maxPromptLength}
-            placeholder="Describe what you want in the image..."
+            placeholder={
+              goClawAgents.length
+                ? "Describe what you want in the image..."
+                : "Configure a GoClaw image agent in Settings first..."
+            }
             supportsImagePrompts={supportsImagePrompts}
             maxImagePromptCount={maxImageRefs}
             referenceImages={referenceImages}
@@ -800,19 +690,7 @@ export default function CreateImage() {
                     panelTitle="Select Model"
                     panelClassName="w-[280px]"
                     richList
-                    triggerIcon={
-                      selectedGoClawAgent ? (
-                        <SparklesIcon className="h-4 w-4" />
-                      ) : (
-                        <img
-                          src={getCreatorIconPathForModelId(
-                            selectedModel?.model ?? "",
-                          )}
-                          alt=""
-                          className="h-4 w-4 icon-auto-contrast"
-                        />
-                      )
-                    }
+                    triggerIcon={<SparklesIcon className="h-4 w-4" />}
                   />
                 </Tooltip>
               </div>
@@ -851,16 +729,7 @@ export default function CreateImage() {
                 )}
               </>
             }
-            rightToolbar={
-              !selectedGoClawAgent && (
-                <GenerationCountPicker
-                  batchSizeMax={selectedModel?.batch_size_max ?? 4}
-                  batchSizeOptions={selectedModel?.batch_size_options}
-                  currentCount={numImages}
-                  handleCountChange={setNumImages}
-                />
-              )
-            }
+            rightToolbar={undefined}
           />
         </div>
       }

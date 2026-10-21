@@ -72,18 +72,20 @@ export class StorytellerApiHostStore {
    */
   public setApiSchemeAndHost(apiSchemeAndHost: string) {
     console.debug("StorytellerApiHostStore.setApiSchemeAndHost()", apiSchemeAndHost, this.constructor.name);
-
-    // TODO(bt,2025-07-06): Actually parse URL.
-    if (!apiSchemeAndHost.startsWith("http://") && !apiSchemeAndHost.startsWith("https://")) {
-      throw new Error(`Scheme not included in URL: ${apiSchemeAndHost}`);
+    let parsed: URL;
+    try {
+      parsed = new URL(apiSchemeAndHost);
+    } catch {
+      throw new Error(`Invalid API origin: ${apiSchemeAndHost}`);
     }
-
-    const FINAL_VALID_SLASH = "https://".lastIndexOf("/");
-    if (apiSchemeAndHost.lastIndexOf("/") > FINAL_VALID_SLASH) {
-      throw new Error(`Path components should not be included in URL: ${apiSchemeAndHost}`);
+    if (
+      (parsed.protocol !== "http:" && parsed.protocol !== "https:") ||
+      parsed.username || parsed.password || parsed.search || parsed.hash ||
+      (parsed.pathname !== "/" && parsed.pathname !== "")
+    ) {
+      throw new Error(`API host must be an HTTP(S) origin without a path: ${apiSchemeAndHost}`);
     }
-
-    this.apiSchemeAndHost = apiSchemeAndHost;
+    this.apiSchemeAndHost = parsed.origin;
   }
 
   private constructor(apiSchemeAndHost: string) {

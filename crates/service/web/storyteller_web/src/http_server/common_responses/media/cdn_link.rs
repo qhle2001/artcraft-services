@@ -12,12 +12,42 @@ const FAKEYOU_DEVELOPMENT: Domain = FAKEYOU_DEV_CDN;
 const STORYTELLER_DEVELOPMENT: Domain = FAKEYOU_DEV_CDN;
 
 // TODO(bt,2025-01-31): Perhaps this should be config driven and configurable at runtime instead of hardcoded.
-pub fn get_cdn_host(media_domain: MediaDomain, server_environment: ServerEnvironment) -> &'static str {
-  cdn_domain(media_domain, server_environment).https_link_without_path()
+pub fn get_cdn_host(media_domain: MediaDomain, server_environment: ServerEnvironment) -> String {
+  let mut url = cdn_url(media_domain, server_environment);
+  url.set_path("");
+  url.to_string().trim_end_matches('/').to_string()
 }
 
 pub fn new_cdn_url(media_domain: MediaDomain, server_environment: ServerEnvironment) -> Url {
-  cdn_domain(media_domain, server_environment).https_url().clone()
+  cdn_url(media_domain, server_environment)
+}
+
+pub fn has_custom_media_cdn() -> bool {
+  std::env::var("MEDIA_CDN_BASE_URL")
+    .map(|value| !value.trim().is_empty())
+    .unwrap_or(false)
+}
+
+fn cdn_url(media_domain: MediaDomain, server_environment: ServerEnvironment) -> Url {
+  match std::env::var("MEDIA_CDN_BASE_URL") {
+    Ok(value) => {
+      let mut url = Url::parse(value.trim())
+        .expect("MEDIA_CDN_BASE_URL must be a valid HTTPS origin");
+      assert!(
+        url.scheme() == "https"
+          && url.host_str().is_some()
+          && url.username().is_empty()
+          && url.password().is_none()
+          && url.path() == "/"
+          && url.query().is_none()
+          && url.fragment().is_none(),
+        "MEDIA_CDN_BASE_URL must be an HTTPS origin without credentials, path, query, or fragment",
+      );
+      url.set_path("");
+      url
+    }
+    Err(_) => cdn_domain(media_domain, server_environment).https_url().clone(),
+  }
 }
 
 fn cdn_domain(media_domain: MediaDomain, server_environment: ServerEnvironment) -> Domain {

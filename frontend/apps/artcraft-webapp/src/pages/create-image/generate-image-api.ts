@@ -1,20 +1,12 @@
 import { HttpApiError, JobsApi, MediaFilesApi, OmniGenApi } from "@storyteller/api";
-import type { OmniGenImageRequest } from "@storyteller/api";
 import type { GeneratedImage } from "./create-image-store";
 
 // ── Request params ───────────────────────────────────────────────────────
 
 export interface GenerateImageParams {
   prompt: string;
-  model: string;
-  numImages?: number;
-  aspectRatio?: string;
-  resolution?: string;
-  quality?: string;
   imageMediaTokens?: string[];
-  agentId?: string;
-  goClawUrl?: string;
-  goClawApiToken?: string;
+  agentId: string;
 }
 
 // ── Enqueue generation ───────────────────────────────────────────────────
@@ -28,49 +20,33 @@ export async function enqueueImageGeneration(
   error?: string;
   errorCode?: number;
 }> {
-  const body: OmniGenImageRequest = {
-    model: params.model,
-    prompt: params.prompt,
-    idempotency_token: crypto.randomUUID(),
-    aspect_ratio: params.aspectRatio ?? null,
-    resolution: params.resolution ?? null,
-    quality: params.quality ?? null,
-    image_batch_count: params.numImages ?? 1,
-    image_media_tokens: params.imageMediaTokens?.length
-      ? params.imageMediaTokens
-      : null,
-  };
+  if (!params.agentId) {
+    return {
+      success: false,
+      error: "Configure the GoClaw connection and image agent in Settings before generating.",
+    };
+  }
 
   try {
     const api = new OmniGenApi();
-    if (params.agentId) {
-      const response = await api.generateImageWithGoClaw({
-        agent_id: params.agentId,
-        goclaw_url: params.goClawUrl ?? "",
-        goclaw_api_token: params.goClawApiToken ?? "",
-        idempotency_token: crypto.randomUUID(),
-        prompt: params.prompt,
-        reference_media_tokens: params.imageMediaTokens,
-      });
-      const mediaApi = new MediaFilesApi();
-      const mediaFiles = await Promise.all(response.media_tokens.map((mediaFileToken) =>
-        mediaApi.GetMediaFileByToken({ mediaFileToken }),
-      ));
-      const images: GeneratedImage[] = mediaFiles
-        .filter((file) => file.success && !!file.data?.media_links?.cdn_url)
-        .map((file) => ({
-          media_token: file.data!.token,
-          cdn_url: file.data!.media_links!.cdn_url!,
-          maybe_thumbnail_template: file.data!.media_links!.maybe_thumbnail_template,
-        }));
-      return { success: true, images };
-    }
-
-    const response = await api.generateImage(body);
-    if (response.success && response.inference_job_token) {
-      return { success: true, jobToken: response.inference_job_token };
-    }
-    return { success: false, error: "Generation failed" };
+    const response = await api.generateImageWithGoClaw({
+      agent_id: params.agentId,
+      idempotency_token: crypto.randomUUID(),
+      prompt: params.prompt,
+      reference_media_tokens: params.imageMediaTokens,
+    });
+    const mediaApi = new MediaFilesApi();
+    const mediaFiles = await Promise.all(response.media_tokens.map((mediaFileToken) =>
+      mediaApi.GetMediaFileByToken({ mediaFileToken }),
+    ));
+    const images: GeneratedImage[] = mediaFiles
+      .filter((file) => file.success && !!file.data?.media_links?.cdn_url)
+      .map((file) => ({
+        media_token: file.data!.token,
+        cdn_url: file.data!.media_links!.cdn_url!,
+        maybe_thumbnail_template: file.data!.media_links!.thumbnail_template,
+      }));
+    return { success: true, images };
   } catch (err: any) {
     // ApiManager throws HttpApiError on non-2xx responses, carrying the
     // server's `message` so it can be shown to the user instead of a bare

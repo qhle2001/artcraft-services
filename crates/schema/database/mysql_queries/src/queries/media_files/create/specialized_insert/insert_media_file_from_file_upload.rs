@@ -21,8 +21,10 @@ use tokens::tokens::users::UserToken;
 
 use crate::queries::generic_synthetic_ids::transactional_increment_generic_synthetic_id::transactional_increment_generic_synthetic_id;
 
+#[derive(Clone, Copy)]
 pub enum UploadType {
   ThirdPartyInference,
+  GoClawInference,
   Filesystem,
   DeviceCaptureApi,
   StorytellerEngine,
@@ -84,7 +86,7 @@ pub async fn insert_media_file_from_file_upload(
   let token = MediaFileToken::generate();
 
   let mut origin_category = match args.upload_type {
-    UploadType::ThirdPartyInference => MediaFileOriginCategory::ThirdPartyInference,
+    UploadType::ThirdPartyInference | UploadType::GoClawInference => MediaFileOriginCategory::ThirdPartyInference,
     UploadType::Filesystem => MediaFileOriginCategory::Upload,
     UploadType::ProjectFile => MediaFileOriginCategory::Upload,
     UploadType::DeviceCaptureApi => MediaFileOriginCategory::DeviceApi,
@@ -93,7 +95,7 @@ pub async fn insert_media_file_from_file_upload(
 
   let mut maybe_generation_provider_str = None;
   let mut is_intermediate_system_file = args.is_intermediate_system_file;
-  let mut is_user_upload = true;
+  let mut is_user_upload = !matches!(args.upload_type, UploadType::GoClawInference);
 
   if let Some(generation_provider) = args.maybe_generation_provider {
     // Overrides if we're using a generation provider

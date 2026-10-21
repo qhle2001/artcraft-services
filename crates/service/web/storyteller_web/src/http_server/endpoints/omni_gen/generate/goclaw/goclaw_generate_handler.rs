@@ -2,7 +2,6 @@ use std::sync::Arc;
 
 use actix_web::{web, HttpRequest};
 use actix_web::web::Json;
-use goclaw_client::{GoClawAgent, GoClawClient};
 use http_server_common::request::get_request_ip::get_request_ip;
 use serde::{Deserialize, Serialize};
 use tokens::tokens::media_files::MediaFileToken;
@@ -10,24 +9,20 @@ use utoipa::ToSchema;
 
 use crate::http_server::common_responses::common_web_error::CommonWebError;
 use crate::http_server::endpoints::omni_api::shared_utils::media_uploads::upload_url_to_media_file::{
-  upload_bytes_to_media_file, MediaUploadKind,
+  upload_generated_bytes_to_media_file, MediaUploadKind,
 };
 use crate::http_server::user_lookup::api_or_web_session::require_any_session_or_key::require_any_session_or_key;
 use crate::http_server::validations::validate_idempotency_token_format::validate_idempotency_token_format;
 use crate::state::server_state::ServerState;
 use mysql_queries::queries::idepotency_tokens::insert_idempotency_token::insert_idempotency_token;
-
-#[derive(Deserialize, ToSchema)]
-pub struct GoClawConnectionRequest {
-  pub goclaw_url: String,
-  pub goclaw_api_token: String,
-}
+use mysql_queries::queries::tags::filter_owned_media_file_tokens::{
+  filter_owned_media_file_tokens, FilterOwnedMediaFileTokensArgs,
+};
+use std::marker::PhantomData;
 
 #[derive(Deserialize, ToSchema)]
 pub struct GoClawGenerateRequest {
   pub idempotency_token: String,
-  pub goclaw_url: String,
-  pub goclaw_api_token: String,
   pub agent_id: String,
   pub prompt: String,
   #[serde(default)]
@@ -36,7 +31,7 @@ pub struct GoClawGenerateRequest {
   pub reference_media_tokens: Vec<MediaFileToken>,
 }
 
-#[derive(Clone, Copy, Default, Deserialize, ToSchema)]
+#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq, Hash, ToSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum GoClawMediaType {
   #[default]
@@ -62,33 +57,10 @@ pub struct GoClawGenerateResponse {
 }
 
 #[derive(Debug, Serialize, ToSchema)]
-pub struct GoClawAgentListResponse {
-  pub agents: Vec<GoClawAgentInfo>,
-}
-
-#[derive(Debug, Serialize, ToSchema)]
 pub struct GoClawAgentInfo {
   pub id: String,
   pub name: String,
   pub description: String,
-}
-
-pub async fn goclaw_agents_handler(
-  request: HttpRequest,
-  body: Json<GoClawConnectionRequest>,
-  server_state: web::Data<Arc<ServerState>>,
-) -> Result<Json<GoClawAgentListResponse>, CommonWebError> {
-  authenticate(&request, &server_state).await?;
-  let client = make_client(&body.goclaw_url, &body.goclaw_api_token)?;
-  let agents = client.list_agents().await.map_err(|err| {
-    log::error!("GoClaw agent listing failed: {:?}", err);
-    CommonWebError::BadInputWithSimpleMessage("Could not connect to GoClaw or load its agents".to_string())
-  })?.into_iter().map(|agent: GoClawAgent| GoClawAgentInfo {
-    id: agent.id,
-    name: agent.name,
-    description: agent.description,
-  }).collect();
-  Ok(Json(GoClawAgentListResponse { agents }))
 }
 
 pub async fn goclaw_generate_handler(
@@ -106,8 +78,6 @@ pub async fn goclaw_generate_handler(
       "prompt is too long or too many reference media files were supplied".to_string(),
     ));
   }
-  let client = make_client(&body.goclaw_url, &body.goclaw_api_token)?;
-
   let mut mysql_connection = server_state.mysql_pool.acquire().await?;
   let session = require_any_session_or_key(
     &request,
@@ -115,12 +85,32 @@ pub async fn goclaw_generate_handler(
     &server_state.avt_cookie_manager,
     &mut *mysql_connection,
   ).await?;
+  let config = super::re_implement::file_config::load_config().await?;
+  let client = config.client_for_agent(&body.agent_id, body.media_type)?;
   if let Err(reason) = validate_idempotency_token_format(&body.idempotency_token) {
     return Err(CommonWebError::BadInputWithSimpleMessage(reason));
   }
   insert_idempotency_token(&body.idempotency_token, &mut *mysql_connection)
     .await
     .map_err(|_| CommonWebError::BadInputWithSimpleMessage("repeated idempotency token".to_string()))?;
+
+  let mut unique_reference_tokens = Vec::new();
+  for token in &body.reference_media_tokens {
+    if !unique_reference_tokens.contains(token) {
+      unique_reference_tokens.push(token.clone());
+    }
+  }
+  let owned_reference_tokens = filter_owned_media_file_tokens(FilterOwnedMediaFileTokensArgs {
+    candidate_tokens: &unique_reference_tokens,
+    owner_user_token: &session.user_token,
+    mysql_executor: &mut *mysql_connection,
+    phantom: PhantomData,
+  }).await?;
+  if owned_reference_tokens.len() != unique_reference_tokens.len() {
+    return Err(CommonWebError::BadInputWithSimpleMessage(
+      "Reference media must belong to the current user".to_string(),
+    ));
+  }
 
   let resolved_media = crate::util::lookup::lookup_media_files_as_cdn_url_list_and_map::lookup_media_files_as_cdn_url_list_and_map(
     &request,
@@ -167,7 +157,7 @@ pub async fn goclaw_generate_handler(
       log::error!("Could not import generated GoClaw media: {:?}", err);
       CommonWebError::server_error_with_message("Could not import generated media from GoClaw")
     })?;
-    let media_token = upload_bytes_to_media_file(
+    let media_token = upload_generated_bytes_to_media_file(
       &server_state,
       &session.user_token,
       &ip_address,
@@ -179,28 +169,6 @@ pub async fn goclaw_generate_handler(
   }
 
   Ok(Json(GoClawGenerateResponse { content, media_tokens }))
-}
-
-async fn authenticate(
-  request: &HttpRequest,
-  server_state: &ServerState,
-) -> Result<(), CommonWebError> {
-  let mut mysql_connection = server_state.mysql_pool.acquire().await?;
-  require_any_session_or_key(
-    request,
-    &server_state.session_checker,
-    &server_state.avt_cookie_manager,
-    &mut *mysql_connection,
-  ).await?;
-  Ok(())
-}
-
-fn make_client(url: &str, token: &str) -> Result<GoClawClient, CommonWebError> {
-  GoClawClient::new(url, token.to_string()).map_err(|_| {
-    CommonWebError::BadInputWithSimpleMessage(
-      "Enter a valid public GoClaw URL using HTTPS and a valid API token".to_string(),
-    )
-  })
 }
 
 fn extract_markdown_media_urls(content: &str, media_type: GoClawMediaType) -> Vec<String> {

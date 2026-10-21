@@ -1,6 +1,6 @@
 
 
-INSERT INTO user_roles
+INSERT IGNORE INTO user_roles
 SET 
   slug = 'user',
   name = 'User',
@@ -27,7 +27,7 @@ SET
   can_ban_users = FALSE,
   can_delete_users = FALSE;
 
-INSERT INTO user_roles
+INSERT IGNORE INTO user_roles
 SET 
   slug = 'mod',
   name = 'Moderator',
@@ -54,7 +54,7 @@ SET
   can_ban_users = TRUE,
   can_delete_users = TRUE;
 
-INSERT INTO user_roles
+INSERT IGNORE INTO user_roles
 SET 
   slug = 'admin',
   name = 'Admin',

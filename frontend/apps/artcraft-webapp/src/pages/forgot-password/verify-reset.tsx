@@ -11,7 +11,7 @@ import { Button } from "@storyteller/ui-button";
 import { Input } from "@storyteller/ui-input";
 import { useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { PasswordResetApi, BillingApi } from "@storyteller/api";
+import { PasswordResetApi } from "@storyteller/api";
 
 import { AuthHeader } from "../../components/auth/auth-layout";
 import { AuthPageFrame } from "../../components/auth/auth-page-frame";
@@ -85,26 +85,8 @@ const VerifyReset = () => {
         return;
       }
 
-      // Check if user has an active subscription to decide redirect
-      try {
-        const billingApi = new BillingApi();
-        const billingResponse = await billingApi.ListActiveSubscriptions();
-        if (
-          billingResponse.success &&
-          billingResponse.data &&
-          billingResponse.data.active_subscriptions.length > 0
-        ) {
-          setRedirectTo("/");
-          setRedirectLabel("Back to Homepage");
-        } else {
-          setRedirectTo("/pricing");
-          setRedirectLabel("Continue");
-        }
-      } catch {
-        // Default to homepage if billing check fails
-        setRedirectTo("/");
-        setRedirectLabel("Back to Homepage");
-      }
+      setRedirectTo("/");
+      setRedirectLabel("Back to Homepage");
     } else {
       setError(
         response.errorMessage ||

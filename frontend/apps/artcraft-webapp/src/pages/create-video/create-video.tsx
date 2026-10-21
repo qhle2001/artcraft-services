@@ -27,7 +27,6 @@ import {
   MobilePromptForm,
   MobileSelectField,
   MobileFieldButton,
-  MobileCountStepper,
   SettingsDrawer,
   DrawerOptionList,
   DrawerSection,
@@ -58,8 +57,6 @@ import {
   AspectRatioIcon,
   AutoIcon,
 } from "../create-image/components/AspectRatioIcon";
-import { GenerationCountPicker } from "../create-image/components/GenerationCountPicker";
-import { useVideoCostEstimate } from "../../lib/cost-estimate-api";
 import {
   mergeRefImages,
   toastMergeRefImagesOutcome,
@@ -72,17 +69,8 @@ import {
   useOmniGenVideoModels,
   OMNI_GENERATE_OUTAGE_MESSAGE,
 } from "@storyteller/omni-gen";
-import {
-  effectivePromptMaxLength,
-  getCreatorIconPathForModelId,
-  getCreatorIconSourceForModelId,
-  getModelDescription,
-  getModelFamilyName,
-  getModelInfo,
-  modelCreatorFromBackend,
-} from "@storyteller/model-list";
+import { effectivePromptMaxLength } from "@storyteller/model-list";
 import { useSignupCta } from "../../components/signup-cta-modal";
-import { useInsufficientCredits } from "../../components/insufficient-credits-modal";
 import { toast } from "../../components/toast/toast";
 import { useGoClawStore, goClawAction } from "../../re-implement/goclaw/goClawStore";
 import { generateGoClawMedia } from "../../re-implement/goclaw/generateGoClawMedia";
@@ -153,44 +141,6 @@ const OUTPUT_FORMAT_LABELS: Record<string, string> = {
   mp4: "MP4",
   mov: "MOV",
 };
-
-// ── Model lookup ─────────────────────────────────────────────────────────
-
-let _modelLookup = new Map<string, OmniGenVideoModelInfo>();
-
-function buildModelPopoverItems(
-  models: OmniGenVideoModelInfo[],
-  selectedId: string,
-): PopoverItem[] {
-  _modelLookup = new Map(models.map((m) => [m.model, m]));
-  return models.map((model) => {
-    const badges = [
-      ...(model.show_generate_with_sound_toggle
-        ? [{ label: "Audio Support" }]
-        : []),
-      ...(model.ending_keyframe_supported ? [{ label: "Start/End" }] : []),
-      ...(model.image_references_supported ? [{ label: "Reference" }] : []),
-    ];
-    const iconSource = getCreatorIconSourceForModelId(model.model);
-    return {
-      label: model.full_name || model.model,
-      selected: model.model === selectedId,
-      description: getModelDescription(model.model, model.extra_info_short),
-      info: getModelInfo(model.model, model.extra_info) || undefined,
-      badges: badges.length > 0 ? badges : undefined,
-      icon: (
-        <img
-          src={iconSource.src}
-          alt={`${model.model} logo`}
-          className={
-            iconSource.isColor ? "h-4 w-4" : "h-4 w-4 icon-auto-contrast"
-          }
-        />
-      ),
-      action: model.model,
-    };
-  });
-}
 
 function buildSizePopoverItems(
   aspectRatioOptions: string[],
@@ -290,7 +240,6 @@ export default function CreateVideo() {
     USER_FEATURE_FLAGS.CAN_USE_QUICKTIME,
   );
   const { loggedIn, openSignupCta } = useSignupCta();
-  const openInsufficientCredits = useInsufficientCredits();
   const { promptBoxRef, promptHeight } = usePromptHeight();
 
   // Fetch models from API
@@ -298,7 +247,8 @@ export default function CreateVideo() {
   const configuredAgents = useGoClawStore((state) => state.agents);
   const videoAgents = useMemo(() => configuredAgents.filter((agent) => agent.type === "video"), [configuredAgents]);
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
-  const selectedAgent = videoAgents.find((agent) => agent.id === selectedAgentId);
+  const selectedAgent =
+    videoAgents.find((agent) => agent.id === selectedAgentId) ?? videoAgents[0];
 
   // UI state
   const ui = useCreateVideoStore((s) => s.ui);
@@ -501,22 +451,16 @@ export default function CreateVideo() {
   const pollingCleanupsRef = useRef<Map<string, () => void>>(new Map());
 
   // Derived model capabilities
-  const hasSizeOptions = (selectedModel?.aspect_ratio_options?.length ?? 0) > 0;
-  const hasResolutionOptions =
-    (selectedModel?.resolution_options?.length ?? 0) > 0;
-  const hasBitrateOptions = (selectedModel?.bitrate_options?.length ?? 0) > 0;
-  const hasOutputFormatOptions =
-    (selectedModel?.output_format_options?.length ?? 0) > 0;
-  const hasSound = !!selectedModel?.show_generate_with_sound_toggle;
-  const supportsImagePrompts = !!selectedAgent ||
-    !!selectedModel?.starting_keyframe_supported ||
-    !!selectedModel?.starting_keyframe_required ||
-    !!selectedModel?.image_references_supported;
-  const supportsVideoRefs = !!selectedAgent || !!selectedModel?.video_references_supported;
-  const supportsAudioRefs = !!selectedAgent || !!selectedModel?.audio_references_supported;
-  const maxVideoRefs = selectedAgent ? 6 : selectedModel?.video_references_max ?? 3;
-  const maxVideoRefDuration =
-    selectedModel?.video_references_max_total_duration_seconds ?? 30;
+  const hasSizeOptions = false;
+  const hasResolutionOptions = false;
+  const hasBitrateOptions = false;
+  const hasOutputFormatOptions = false;
+  const hasSound = false;
+  const supportsImagePrompts = !!selectedAgent;
+  const supportsVideoRefs = !!selectedAgent;
+  const supportsAudioRefs = !!selectedAgent;
+  const maxVideoRefs = selectedAgent ? 6 : 0;
+  const maxVideoRefDuration = selectedAgent ? 30 : 0;
   const supportsRefMode = !!selectedAgent ||
     !!selectedModel?.image_references_supported ||
     supportsVideoRefs ||
@@ -582,41 +526,13 @@ export default function CreateVideo() {
 
   const lightbox = useLightboxNav(flatItems);
 
-  // Cost estimate. The input durations are estimate-only hints: models like
-  // Seedance 2.5 bill reference-video input seconds, and sending the
-  // durations lets the quote match what generation will bill (generation
-  // itself measures the real files server-side).
-  const totalInputVideoDurationMillis =
-    isReferenceMode && referenceVideos.length > 0
-      ? referenceVideos.reduce((sum, vid) => sum + vid.duration, 0) * 1000
-      : undefined;
-  const totalInputAudioDurationMillis =
-    isReferenceMode && referenceAudios.length > 0
-      ? referenceAudios.reduce((sum, aud) => sum + aud.duration, 0) * 1000
-      : undefined;
-
-  const modelEstimatedCredits = useVideoCostEstimate({
-    model: selectedAgent ? "" : selectedModel?.model ?? "",
-    aspectRatio: selectedSize,
-    resolution,
-    bitrate,
-    duration: effectiveDuration,
-    numVideos,
-    hasStartFrame: !isReferenceMode && referenceImages.length > 0,
-    hasEndFrame: !isReferenceMode && hasEndFrame && !!endFrameImage,
-    isReferenceMode,
-    referenceImageCount: isReferenceMode ? referenceImages.length : 0,
-    referenceVideoCount: isReferenceMode ? referenceVideos.length : 0,
-    generateAudio: hasSound ? generateWithSound : undefined,
-    totalInputVideoDurationMillis,
-    totalInputAudioDurationMillis,
-  });
-  const estimatedCredits = selectedAgent ? null : modelEstimatedCredits;
+  const estimatedCredits = null;
 
   // Character @-mentions are driven by the model's capability flag (set by the
   // API), in both keyframe and reference input modes — except models we're
   // intentionally holding back for now (see CHARACTERS_DISABLED_MODEL_IDS).
   const supportsCharacters =
+    !selectedAgent &&
     !!selectedModel?.character_references_supported &&
     !CHARACTERS_DISABLED_MODEL_IDS.has(selectedModel?.model ?? "");
   const activeCharacters = supportsCharacters ? storedCharacters : [];
@@ -672,21 +588,21 @@ export default function CreateVideo() {
     referenceVideos.length > 0 ||
     referenceAudios.length > 0;
   const promptPlaceholder =
-    isSeedance2Model && isReferenceMode && hasUploadedRefs
+    !videoAgents.length
+      ? "Configure a GoClaw video agent in Settings first..."
+      : isSeedance2Model && isReferenceMode && hasUploadedRefs
       ? "Describe your video. Use @Image1, @Video1... to reference your uploads"
       : "Describe the video you want to generate...";
 
   const modelItems = useMemo(
-    () => [
-      ...buildModelPopoverItems(apiModels, selectedAgent ? "" : selectedModel?.model ?? ""),
-      ...videoAgents.map((agent): PopoverItem => ({
+    () =>
+      videoAgents.map((agent): PopoverItem => ({
         label: agent.name,
         description: `GoClaw · ${agent.description || "Video agent"}`,
         action: goClawAction(agent.id),
-        selected: agent.id === selectedAgentId,
+        selected: agent.id === selectedAgent?.id,
       })),
-    ],
-    [apiModels, selectedModel?.model, selectedAgent, videoAgents, selectedAgentId],
+    [videoAgents, selectedAgent?.id],
   );
   // Family-grouped variant for the desktop picker. The mobile bottom sheet
   // keeps the flat `modelItems` (no flyouts on touch).
@@ -694,16 +610,7 @@ export default function CreateVideo() {
   const groupedModelItems = useMemo(
     () =>
       modelPickerStyle === "grouped"
-        ? groupModelItems(modelItems, (item) =>
-          item.action?.startsWith("goclaw-agent:") ? "GoClaw Agents" : getModelFamilyName(
-              item.action,
-              modelCreatorFromBackend(
-                item.action
-                  ? _modelLookup.get(item.action)?.model_creator
-                  : undefined,
-              ),
-            ),
-          )
+        ? groupModelItems(modelItems, () => "GoClaw Agents")
         : modelItems,
     [modelItems, modelPickerStyle],
   );
@@ -986,47 +893,8 @@ export default function CreateVideo() {
         setSelectedAgentId(item.action.slice("goclaw-agent:".length));
         return;
       }
-      const model = item.action ? _modelLookup.get(item.action) : undefined;
-      if (!model) return;
-      setSelectedAgentId(null);
-      const currentState = useCreateVideoStore.getState().ui;
-
-      const newSupportsKeyframe =
-        !!model.starting_keyframe_supported ||
-        !!model.starting_keyframe_required;
-      const newSupportsRefs =
-        !!model.image_references_supported ||
-        !!model.video_references_supported ||
-        !!model.audio_references_supported;
-
-      const nextInputMode =
-        currentState.inputMode === "reference" && newSupportsRefs
-          ? "reference"
-          : "keyframe";
-
-      // Aspect ratio / resolution / count / duration / sound are preserved and
-      // resolved against the new model at read time, so the user's choices
-      // survive model switches. Only input mode (capability-bound) is recomputed.
-      setUi({
-        selectedModelId: model.model,
-        inputMode: nextInputMode,
-      });
-
-      // Only clear media that the new model can't use in any mode.
-      if (!newSupportsKeyframe && !model.image_references_supported) {
-        setReferenceImages([]);
-      }
-      if (!model.ending_keyframe_supported) {
-        setEndFrameImage(undefined);
-      }
-      if (!model.video_references_supported) {
-        setReferenceVideos([]);
-      }
-      if (!model.audio_references_supported) {
-        setReferenceAudios([]);
-      }
     },
-    [setUi],
+    [],
   );
 
   const handleSizeChange = useCallback(
@@ -1275,6 +1143,10 @@ export default function CreateVideo() {
       openSignupCta();
       return;
     }
+    if (!selectedAgent) {
+      toast.error("Configure a GoClaw video agent in Settings before generating.");
+      return;
+    }
     if (selectedAgent) {
       if (!prompt.trim() || isGeneratingRef.current) return;
       isGeneratingRef.current = true;
@@ -1444,22 +1316,14 @@ export default function CreateVideo() {
 
       if (!result.success || !result.jobToken) {
         console.warn("[generate-video] enqueue failed", result.error);
-        // 402 Payment Required: the user is out of credits. Drop the pending
-        // card and surface the upgrade modal instead of a failed-card error.
-        if (result.errorCode === 402) {
-          dismissBatch(batchId);
-          openInsufficientCredits();
+        // A GoClaw failure is not an ArtCraft credit or subscription event.
+        // Show the backend error and mark the pending item as failed.
+        if (result.errorCode != null && result.errorCode >= 500) {
+          toast.error(OMNI_GENERATE_OUTAGE_MESSAGE);
         } else {
-          // Always toast: batches that fail at enqueue never got a job token,
-          // so the gallery's failed-card rendering never shows them, and a
-          // silent failBatch here looks like the button did nothing.
-          if (result.errorCode != null && result.errorCode >= 500) {
-            toast.error(OMNI_GENERATE_OUTAGE_MESSAGE);
-          } else {
-            toast.error(result.error ?? "Failed to start generation");
-          }
-          failBatch(batchId, result.error ?? "Failed to start generation");
+          toast.error(result.error ?? "GoClaw generation failed");
         }
+        failBatch(batchId, result.error ?? "GoClaw generation failed");
       } else {
         setBatchJobToken(batchId, result.jobToken);
         console.log("[generate-video] polling started", {
@@ -1500,7 +1364,6 @@ export default function CreateVideo() {
   }, [
     loggedIn,
     openSignupCta,
-    openInsufficientCredits,
     prompt,
     needsImage,
     isReferenceMode,
@@ -1742,14 +1605,7 @@ export default function CreateVideo() {
           )}
         </>
       }
-      countField={
-        <MobileCountStepper
-          value={numVideos}
-          onChange={setNumVideos}
-          max={selectedModel?.batch_size_max ?? 4}
-          options={selectedModel?.batch_size_options}
-        />
-      }
+      countField={undefined}
       extraActions={
         supportsCharacters ? (
           <button
@@ -1877,19 +1733,7 @@ export default function CreateVideo() {
                   panelTitle="Select Model"
                   panelClassName="w-[280px]"
                   richList
-                  triggerIcon={
-                    selectedAgent ? (
-                      <SparklesIcon className="h-4 w-4" />
-                    ) : (
-                    <img
-                      src={getCreatorIconPathForModelId(
-                        selectedModel?.model ?? "",
-                      )}
-                      alt=""
-                      className="h-4 w-4 icon-auto-contrast"
-                    />
-                    )
-                  }
+                  triggerIcon={<SparklesIcon className="h-4 w-4" />}
                 />
               </Tooltip>
             }
@@ -1927,15 +1771,7 @@ export default function CreateVideo() {
                 ? () => setIsAudioRefPickerOpen(true)
                 : undefined
             }
-            rightToolbar={
-              <GenerationCountPicker
-                batchSizeMax={selectedModel?.batch_size_max ?? 4}
-                batchSizeOptions={selectedModel?.batch_size_options}
-                currentCount={numVideos}
-                handleCountChange={setNumVideos}
-                panelTitle="No. of videos"
-              />
-            }
+            rightToolbar={undefined}
             leftToolbar={
               <>
                 {hasSizeOptions && (

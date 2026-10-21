@@ -10,6 +10,20 @@ import { setToastDelegate } from "@storyteller/ui-toaster";
 import { toast } from "./components/toast/toast";
 import { captureLoginBridgeContext, LOGIN_BRIDGE_PATH } from "./lib/login-bridge-context";
 
+// A static production bundle must explicitly name its self-hosted API. Never
+// silently fall back to the shared Storyteller production backend.
+if (import.meta.env.PROD) {
+  const apiHost = import.meta.env.VITE_API_HOST;
+  if (!apiHost) {
+    throw new Error("VITE_API_HOST is required for production builds (for example https://api.example.com)");
+  }
+  const parsedApiHost = new URL(apiHost);
+  if (parsedApiHost.protocol !== "https:") {
+    throw new Error("VITE_API_HOST must use HTTPS in production");
+  }
+  StorytellerApiHostStore.getInstance().setApiSchemeAndHost(apiHost);
+}
+
 captureLoginBridgeContext();
 const isLoginBridge = window.location.pathname === LOGIN_BRIDGE_PATH;
 

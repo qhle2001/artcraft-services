@@ -30,6 +30,8 @@ pub mod model_weight_usage_counts;
 pub mod model_weights;
 pub mod prompt_context_items;
 pub mod prompts;
+#[path = "re-implement/mod.rs"]
+pub mod re_implement;
 pub mod public_event_feed;
 pub mod staff_audit_logs;
 pub mod stats;

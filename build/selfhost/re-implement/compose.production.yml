@@ -1,0 +1,162 @@
+name: artcraft-selfhost
+
+services:
+  mysql:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Set MYSQL_ROOT_PASSWORD in .env}
+      MYSQL_DATABASE: storyteller
+      MYSQL_USER: storyteller
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?Set MYSQL_PASSWORD in .env}
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-p${MYSQL_ROOT_PASSWORD}", "--silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  migrate:
+    image: mysql:8.4
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      MYSQL_PWD: ${MYSQL_ROOT_PASSWORD:?Set MYSQL_ROOT_PASSWORD in .env}
+    volumes:
+      - ../../../_database/sql/migrations:/migrations:ro
+      - ../../../_database/sql/seed/sql/system_roles.sql:/system_roles.sql:ro
+    entrypoint: ["bash", "-c"]
+    command:
+      - |
+        set -euo pipefail
+        run_sql() { mysql -h mysql -u root storyteller "$$@"; }
+        run_sql -e "CREATE TABLE IF NOT EXISTS __diesel_schema_migrations (
+          version VARCHAR(50) PRIMARY KEY NOT NULL,
+          run_on TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP)"
+        for dir in /migrations/*/; do
+          name=$$(basename "$$dir")
+          version=$$(echo "$${name%%_*}" | tr -d '-')
+          if [ -n "$$(run_sql -N -e "SELECT 1 FROM __diesel_schema_migrations WHERE version = '$$version'")" ]; then
+            continue
+          fi
+          echo "Applying migration $$name"
+          run_sql < "$$dir/up.sql"
+          run_sql -e "INSERT INTO __diesel_schema_migrations (version) VALUES ('$$version')"
+        done
+        echo "Seeding standard user roles."
+        run_sql < /system_roles.sql
+        echo "Migrations complete."
+
+  redis:
+    image: redis:7
+    restart: unless-stopped
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.15.3
+    restart: unless-stopped
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: "false"
+      ES_JAVA_OPTS: -Xms512m -Xmx512m
+    volumes:
+      - elasticsearch-data:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://localhost:9200/_cluster/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+  seaweedfs:
+    image: chrislusf/seaweedfs:3.97
+    restart: unless-stopped
+    command: server -dir=/data -s3 -s3.port=8333 -s3.config=/etc/seaweedfs/s3.json
+    configs:
+      - source: seaweedfs-s3
+        target: /etc/seaweedfs/s3.json
+    volumes:
+      - seaweedfs-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8333/healthz || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  storage-init:
+    image: chrislusf/seaweedfs:3.97
+    depends_on:
+      seaweedfs:
+        condition: service_healthy
+    entrypoint: ["sh", "-c"]
+    command:
+      - |
+        set -e
+        for bucket in artcraft-private artcraft-public artcraft-public-gc; do
+          echo "s3.bucket.create -name $$bucket" | weed shell -master=seaweedfs:9333
+        done
+
+  storyteller-web:
+    build:
+      context: ../../..
+      dockerfile: build/service_cpu.Dockerfile
+    image: artcraft-services:selfhost
+    restart: unless-stopped
+    init: true
+    stop_grace_period: 45s
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      storage-init:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
+    env_file: .env
+    environment:
+      SERVER_ENVIRONMENT: production
+      BIND_ADDRESS: 0.0.0.0:12345
+      MYSQL_URL: mysql://storyteller:${MYSQL_PASSWORD}@mysql:3306/storyteller
+      REDIS_0_URL: redis://redis:6379/0
+      ELASTICSEARCH_URL: http://elasticsearch:9200
+      S3_COMPATIBLE_ENDPOINT_URL: http://seaweedfs:8333
+      ACCESS_KEY: ${S3_ACCESS_KEY}
+      SECRET_KEY: ${S3_SECRET_KEY}
+      REGION_NAME: us-east-1
+      W2L_PRIVATE_DOWNLOAD_BUCKET_NAME: artcraft-private
+      W2L_PUBLIC_DOWNLOAD_BUCKET_NAME: artcraft-public
+      GC_ENABLED_PUBLIC_BUCKET_NAME: artcraft-public-gc
+      AUDIO_UPLOADS_BUCKET_ROOT: /user_uploaded_audio
+      COOKIE_SECURE: "true"
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:?Set CORS_ALLOWED_ORIGINS in .env}
+      MEDIA_CDN_BASE_URL: ${MEDIA_CDN_BASE_URL:?Set MEDIA_CDN_BASE_URL in .env}
+      GOCLAW_CONFIG_ENCRYPTION_KEY: ${GOCLAW_CONFIG_ENCRYPTION_KEY:?Set GOCLAW_CONFIG_ENCRYPTION_KEY in .env}
+    ports:
+      - "${API_BIND_HOST:-127.0.0.1}:${API_BIND_PORT:-12345}:12345"
+
+configs:
+  seaweedfs-s3:
+    content: |
+      {
+        "identities": [
+          {
+            "name": "artcraft",
+            "credentials": [{"accessKey": "${S3_ACCESS_KEY}", "secretKey": "${S3_SECRET_KEY}"}],
+            "actions": ["Read", "Write", "List", "Tagging"]
+          }
+        ]
+      }
+
+volumes:
+  mysql-data:
+  redis-data:
+  elasticsearch-data:
+  seaweedfs-data:

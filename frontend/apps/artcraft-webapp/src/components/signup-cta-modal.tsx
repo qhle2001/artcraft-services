@@ -1,4 +1,4 @@
-import { Link, useLocation, useNavigate } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { useState } from "react";
 import { create } from "zustand";
 import { CheckIcon } from "lucide-react";
@@ -6,7 +6,6 @@ import { Modal } from "@storyteller/ui-modal";
 import { Button } from "@storyteller/ui-button";
 import { GoogleLoginButton } from "./auth";
 import { refreshSession, useSession } from "../lib/session";
-import { hasActiveSubscription } from "../lib/billing";
 
 interface SignupCtaState {
   isOpen: boolean;
@@ -45,23 +44,13 @@ const PERKS: string[] = [
 export function SignupCtaModal() {
   const isOpen = useSignupCtaStore((s) => s.isOpen);
   const close = useSignupCtaStore((s) => s.close);
-  const navigate = useNavigate();
   const location = useLocation();
   const from = encodeURIComponent(location.pathname + location.search);
   const [error, setError] = useState<string | null>(null);
 
-  // Mirror the login/signup pages: refresh the session, then push users without
-  // an active subscription to pricing. Subscribers just close the modal and stay
-  // on the page they were on.
   const handleGoogleSuccess = async () => {
-    const [, subscribed] = await Promise.all([
-      refreshSession(true),
-      hasActiveSubscription(),
-    ]);
+    await refreshSession(true);
     close();
-    if (!subscribed) {
-      navigate("/pricing");
-    }
   };
 
   const handleGoogleError = (message: string) => {

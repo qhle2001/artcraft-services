@@ -46,25 +46,10 @@ import {
 } from "../../components/generation-gallery";
 import { Lightbox } from "../../components/lightbox/lightbox";
 import { useCreateAudioStore } from "./create-audio-store";
-import {
-  enqueueAudioGeneration,
-  AUDIO_MODELS_REQUIRING_AUDIO_REF,
-} from "./generate-audio-api";
-import type { AudioGenerationSettings } from "./generate-audio-api";
-import { useAudioCostEstimate } from "../../lib/cost-estimate-api";
 import { resolveModelNumberOption } from "../../lib/resolve-model-setting";
-import {
-  useOmniGenAudioModels,
-  OMNI_GENERATE_OUTAGE_MESSAGE,
-} from "@storyteller/omni-gen";
-import {
-  getCreatorIconPathForModelId,
-  getModelDescription,
-  getModelInfo,
-} from "@storyteller/model-list";
+import { useOmniGenAudioModels } from "@storyteller/omni-gen";
 import { toast } from "../../components/toast/toast";
 import { useSignupCta } from "../../components/signup-cta-modal";
-import { useInsufficientCredits } from "../../components/insufficient-credits-modal";
 import { MicIcon, MicOffIcon, RepeatIcon, SparklesIcon } from "lucide-react";
 import { useGoClawStore, goClawAction } from "../../re-implement/goclaw/goClawStore";
 import { generateGoClawMedia } from "../../re-implement/goclaw/generateGoClawMedia";
@@ -77,8 +62,6 @@ const AUDIO_FILTER = [FilterMediaClasses.AUDIO];
 
 const AUDIO_REF_MAX_DURATION_SECONDS = 600;
 
-const supports = (flag: boolean | null | undefined): boolean => flag === true;
-
 // The lib ToggleButton still carries the old glassy look (2px transparent
 // border, grey translucent blur). These overrides align the audio toggles
 // with their sibling toolbar controls (the PopoverMenu triggers): flat
@@ -89,36 +72,11 @@ const toolbarToggleClassName = (isActive: boolean): string =>
     ? "rounded-[3px] border border-ui-controls-border backdrop-blur-none hover:border-ui-controls-border"
     : "rounded-[3px] border border-ui-controls-border bg-ui-controls backdrop-blur-none hover:bg-ui-controls/80";
 
-// Store API model data alongside popover items via a lookup map
-let _modelLookup = new Map<string, OmniGenAudioModelDetails>();
-
-function buildModelPopoverItems(
-  models: OmniGenAudioModelDetails[],
-  selectedId: string,
-): PopoverItem[] {
-  _modelLookup = new Map(models.map((m) => [m.model, m]));
-  return models.map((model) => ({
-    label: model.full_name || model.model,
-    selected: model.model === selectedId,
-    description: getModelDescription(model.model, model.extra_info_short),
-    info: getModelInfo(model.model, model.extra_info) || undefined,
-    icon: (
-      <img
-        src={getCreatorIconPathForModelId(model.model)}
-        alt={`${model.model} logo`}
-        className="h-4 w-4 icon-auto-contrast"
-      />
-    ),
-    action: model.model, // use action to carry the model id
-  }));
-}
-
 // ── Component ────────────────────────────────────────────────────────────
 
 export default function CreateAudio() {
   const { user, authChecked } = useAuthCheck();
   const { loggedIn, openSignupCta } = useSignupCta();
-  const openInsufficientCredits = useInsufficientCredits();
   const { promptBoxRef, promptHeight } = usePromptHeight();
 
   // Fetch models from API
@@ -126,7 +84,8 @@ export default function CreateAudio() {
   const configuredAgents = useGoClawStore((state) => state.agents);
   const audioAgents = useMemo(() => configuredAgents.filter((agent) => agent.type === "audio"), [configuredAgents]);
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
-  const selectedAgent = audioAgents.find((agent) => agent.id === selectedAgentId);
+  const selectedAgent =
+    audioAgents.find((agent) => agent.id === selectedAgentId) ?? audioAgents[0];
 
   // UI state
   const ui = useCreateAudioStore((s) => s.ui);
@@ -153,32 +112,22 @@ export default function CreateAudio() {
 
   // Capability gating. Flags are serde-skipped when absent — only `true`
   // counts as supported.
-  const styleSupported = supports(selectedModel?.style_prompt_supported);
-  const hasInstrumental = supports(
-    selectedModel?.instrumental_toggle_supported,
-  );
-  const hasKeepLyrics = supports(selectedModel?.keep_lyrics_supported);
-  const hasLoopable = supports(selectedModel?.loopable_toggle_supported);
-  const hasBpm = supports(selectedModel?.bpm_supported);
-  const hasMusicalKey = supports(selectedModel?.musical_key_supported);
-  const sampleRateOptions = selectedModel?.sample_rate_hz_options ?? null;
-  const hasSpeed = supports(selectedModel?.speed_supported);
-  const hasVolume = supports(selectedModel?.volume_supported);
-  const hasPitch = supports(selectedModel?.pitch_supported);
+  const styleSupported = false;
+  const hasInstrumental = false;
+  const hasKeepLyrics = false;
+  const hasLoopable = false;
+  const hasBpm = false;
+  const hasMusicalKey = false;
+  const sampleRateOptions: number[] = [];
+  const hasSpeed = false;
+  const hasVolume = false;
+  const hasPitch = false;
   const hasTuning =
     !!sampleRateOptions?.length || hasSpeed || hasVolume || hasPitch;
-  const audioRefsSupported = !!selectedAgent || supports(
-    selectedModel?.audio_references_supported,
-  );
-  const maxAudioRefs = selectedAgent ? 6 : selectedModel?.audio_references_max ?? 1;
-  const imageRefsSupported = !!selectedAgent || supports(
-    selectedModel?.image_references_supported,
-  );
-  const maxImageRefs = selectedAgent ? 6 : selectedModel?.image_references_max ?? 1;
-  const requiresAudioRef = !selectedAgent && AUDIO_MODELS_REQUIRING_AUDIO_REF.has(
-    selectedModel?.model ?? "",
-  );
-
+  const audioRefsSupported = !!selectedAgent;
+  const maxAudioRefs = selectedAgent ? 6 : 0;
+  const imageRefsSupported = !!selectedAgent;
+  const maxImageRefs = selectedAgent ? 6 : 0;
   // Seed Audio output shaping — sticky across model switches; numeric sliders
   // clamp at read time so persisted values always stay in the valid range.
   const sampleRateHz =
@@ -249,25 +198,17 @@ export default function CreateAudio() {
 
   const lightbox = useLightboxNav(flatItems);
 
-  const modelEstimatedCredits = useAudioCostEstimate({
-    model: selectedAgent ? "" : selectedModel?.model ?? "",
-    audioReferenceCount: referenceAudios.length,
-    hasImageReference: referenceImages.length > 0,
-    sampleRateHz: sampleRateOptions?.length ? sampleRateHz : undefined,
-  });
-  const estimatedCredits = selectedAgent ? null : modelEstimatedCredits;
+  const estimatedCredits = null;
 
   const modelItems = useMemo(
-    () => [
-      ...buildModelPopoverItems(apiModels, selectedAgent ? "" : selectedModel?.model ?? ""),
-      ...audioAgents.map((agent): PopoverItem => ({
+    () =>
+      audioAgents.map((agent): PopoverItem => ({
         label: agent.name,
         description: `GoClaw · ${agent.description || "Audio agent"}`,
         action: goClawAction(agent.id),
-        selected: agent.id === selectedAgentId,
+        selected: agent.id === selectedAgent?.id,
       })),
-    ],
-    [apiModels, selectedModel?.model, selectedAgent, audioAgents, selectedAgentId],
+    [audioAgents, selectedAgent?.id],
   );
 
   const hasContent =
@@ -277,10 +218,7 @@ export default function CreateAudio() {
     gallery.items.length > 0 ||
     gallery.isInitialLoading;
 
-  const missingRequiredAudioRef =
-    requiresAudioRef && referenceAudios.length !== 1;
-  const canGenerate =
-    !!prompt.trim() && !isGenerating && (!missingRequiredAudioRef || !!selectedAgent);
+  const canGenerate = !!selectedAgent && !!prompt.trim() && !isGenerating;
 
   // ── Handlers ───────────────────────────────────────────────────────────
 
@@ -290,15 +228,8 @@ export default function CreateAudio() {
         setSelectedAgentId(item.action.slice("goclaw-agent:".length));
         return;
       }
-      const model = item.action ? _modelLookup.get(item.action) : undefined;
-      if (!model) return;
-      setSelectedAgentId(null);
-      // Only switch the model — style/toggles/tuning are preserved and
-      // resolved against the new model at read time, so the user's choices
-      // survive model switches instead of resetting to defaults.
-      setUi({ selectedModelId: model.model });
     },
-    [setUi],
+    [],
   );
 
   // Seed Audio can't combine audio and image references — adding one kind
@@ -425,108 +356,44 @@ export default function CreateAudio() {
       openSignupCta();
       return;
     }
-    if (!prompt.trim() || isGenerating || (!selectedModel && !selectedAgent)) return;
-
-    if (selectedAgent) {
-      setIsGenerating(true);
-      try {
-        const media = await generateGoClawMedia({
-          type: "audio",
-          agentId: selectedAgent.id,
-          prompt: prompt.trim(),
-          referenceMediaTokens: [
-            ...referenceAudios.map((item) => item.mediaToken),
-            ...referenceImages.map((item) => item.mediaToken),
-          ].filter((token): token is string => !!token),
-        });
-        if (!media.length) throw new Error("GoClaw returned no audio file.");
-        gallery.refresh();
-        toast.success(`GoClaw created ${media.length} audio file(s).`);
-      } catch (cause) {
-        toast.error(cause instanceof Error ? cause.message : "GoClaw generation failed");
-      } finally {
-        setIsGenerating(false);
-      }
+    if (!selectedAgent) {
+      toast.error("Configure a GoClaw audio agent in Settings before generating.");
       return;
     }
+    if (!prompt.trim() || isGenerating) return;
 
-    if (!selectedModel) return;
-
-    if (missingRequiredAudioRef) {
-      toast.error(
-        `${selectedModel.full_name ?? "This model"} needs an audio track to work from — add one first`,
-      );
+    const referenceMediaTokens = [
+      ...referenceAudios.map((item) => item.mediaToken),
+      ...referenceImages.map((item) => item.mediaToken),
+    ].filter((token): token is string => !!token);
+    if (referenceMediaTokens.length > 10) {
+      toast.error("GoClaw accepts up to 10 reference files per request.");
       return;
     }
 
     setIsGenerating(true);
-
     try {
-      const settings: AudioGenerationSettings = {
-        prompt,
-        stylePrompt: ui.stylePrompt,
-        audioMediaTokens: referenceAudios
-          .map((a) => a.mediaToken)
-          .filter((t): t is string => typeof t === "string" && t.length > 0),
-        imageMediaTokens: referenceImages
-          .map((img) => img.mediaToken)
-          .filter((t): t is string => typeof t === "string" && t.length > 0),
-        isInstrumental: ui.isInstrumental,
-        keepLyrics: ui.keepLyrics,
-        isLoopable: ui.isLoopable,
-        bpm: ui.bpm,
-        musicalKey: ui.musicalKey,
-        sampleRateHz,
-        speed,
-        volume,
-        pitch,
-      };
-
-      const result = await enqueueAudioGeneration(selectedModel, settings);
-
-      if (!result.success) {
-        // 402 Payment Required: the user is out of credits. Surface the
-        // upgrade modal instead of an error toast.
-        if (result.errorCode === 402) {
-          openInsufficientCredits();
-        } else if (result.errorCode != null && result.errorCode >= 500) {
-          toast.error(OMNI_GENERATE_OUTAGE_MESSAGE);
-        } else {
-          toast.error(result.error ?? "Failed to start generation");
-        }
-        setIsGenerating(false);
-        return;
-      }
-
-      // The jobs feed (5s poll + this nudge) renders the pending cards — one
-      // per job token (Suno can return several clips per request).
-      window.dispatchEvent(new Event("credits-change"));
-      window.dispatchEvent(new Event("task-queue-update"));
-    } catch {
-      toast.error("Network error - please try again");
+      const media = await generateGoClawMedia({
+        type: "audio",
+        agentId: selectedAgent.id,
+        prompt: prompt.trim(),
+        referenceMediaTokens,
+      });
+      if (!media.length) throw new Error("GoClaw returned no audio file.");
+      gallery.refresh();
+      toast.success(`GoClaw created ${media.length} audio file(s).`);
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : "GoClaw generation failed");
     } finally {
       setIsGenerating(false);
     }
   }, [
     loggedIn,
     openSignupCta,
-    openInsufficientCredits,
     prompt,
     isGenerating,
-    selectedModel,
     selectedAgent,
     gallery.refresh,
-    missingRequiredAudioRef,
-    ui.stylePrompt,
-    ui.isInstrumental,
-    ui.keepLyrics,
-    ui.isLoopable,
-    ui.bpm,
-    ui.musicalKey,
-    sampleRateHz,
-    speed,
-    volume,
-    pitch,
     referenceAudios,
     referenceImages,
   ]);
@@ -666,7 +533,11 @@ export default function CreateAudio() {
       onSubmit={handleGenerate}
       isSubmitting={isGenerating}
       credits={estimatedCredits}
-      placeholder="Describe the music or sound you want..."
+      placeholder={
+        audioAgents.length
+          ? "Describe the music or sound you want..."
+          : "Configure a GoClaw audio agent in Settings first..."
+      }
       autoAdvance={loggedIn && canGenerate}
       modelField={
         <MobileSelectField
@@ -875,7 +746,11 @@ export default function CreateAudio() {
             isSubmitting={isGenerating}
             disabled={!canGenerate}
             credits={estimatedCredits}
-            placeholder="Describe the music or sound you want..."
+            placeholder={
+              audioAgents.length
+                ? "Describe the music or sound you want..."
+                : "Configure a GoClaw audio agent in Settings first..."
+            }
             supportsImagePrompts={imageRefsSupported}
             maxImagePromptCount={maxImageRefs}
             referenceImages={referenceImages}
@@ -912,29 +787,13 @@ export default function CreateAudio() {
                   panelClassName="w-[360px]"
                   richList
                   triggerIcon={
-                    selectedAgent ? (
-                      <SparklesIcon className="h-4 w-4" />
-                    ) : (
-                    <img
-                      src={getCreatorIconPathForModelId(
-                        selectedModel?.model ?? "",
-                      )}
-                      alt=""
-                      className="h-4 w-4 icon-auto-contrast"
-                    />
-                    )
+                    <SparklesIcon className="h-4 w-4" />
                   }
                 />
               </Tooltip>
             }
             leftToolbar={leftToolbar}
-            rightToolbar={
-              missingRequiredAudioRef ? (
-                <span className="flex items-center gap-1.5 text-xs font-medium text-red-500 animate-pulse">
-                  Audio track required
-                </span>
-              ) : undefined
-            }
+            rightToolbar={undefined}
           />
         </div>
       }

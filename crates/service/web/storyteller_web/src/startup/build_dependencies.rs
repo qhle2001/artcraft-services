@@ -22,6 +22,7 @@ use server_environment::ServerEnvironment;
 use shared_env_var_config::redis::env_get_redis_0_connection_string_or_default;
 use sqlx::MySqlPool;
 use url_config::third_party_url_redirector::ThirdPartyUrlRedirector;
+use url::Url;
 
 use crate::configs::app_startup::redis_rate_limiters::configure_redis_rate_limiters;
 use crate::configs::connect_to_database::connect_to_database;
@@ -181,6 +182,21 @@ pub async fn setup_dependencies(server_hostname: &str) -> AnyhowResult<SetupResu
   let server_environment = ServerEnvironment::from_str(&easyenv::get_env_string_required("SERVER_ENVIRONMENT")?)
     .ok_or(anyhow!("invalid server environment"))?;
 
+  let media_cdn_base_url = easyenv::get_env_string_optional("MEDIA_CDN_BASE_URL");
+  if let Some(base_url) = media_cdn_base_url.as_deref() {
+    let parsed = Url::parse(base_url)?;
+    if parsed.scheme() != "https"
+      || parsed.host_str().is_none()
+      || !parsed.username().is_empty()
+      || parsed.password().is_some()
+      || parsed.path() != "/"
+      || parsed.query().is_some()
+      || parsed.fragment().is_some()
+    {
+      return Err(anyhow!("MEDIA_CDN_BASE_URL must be an HTTPS origin without credentials, path, query, or fragment"));
+    }
+  }
+
   let (pager, pager_worker, paging_flags) = build_pager(server_environment, server_hostname);
 
   let service_feature_flags = setup_static_feature_flags(paging_flags)?;
@@ -216,7 +232,7 @@ pub async fn setup_dependencies(server_hostname: &str) -> AnyhowResult<SetupResu
     hostname: server_hostname.to_string(),
     startup_time,
     server_environment,
-    maybe_media_cdn_override_url: None, // NB: This is a test escape hatch
+    maybe_media_cdn_override_url: media_cdn_base_url,
     flags: service_feature_flags,
     third_party_url_redirector,
     health_check_status,

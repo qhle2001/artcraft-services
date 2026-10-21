@@ -13,7 +13,6 @@ import {
 } from "../../components/auth";
 import Seo from "../../components/seo";
 import { refreshSession } from "../../lib/session";
-import { hasActiveSubscription } from "../../lib/billing";
 import { authContinuationUrl, LOGIN_BRIDGE_PATH, safeAuthReturnPath } from "../../lib/login-bridge-context";
 
 const Login = () => {
@@ -57,13 +56,9 @@ const Login = () => {
       navigate(redirectTo);
       return;
     }
-    // Refresh the session (so the app sees the new cookie) and check the
-    // subscription in parallel; users without one are pushed to pricing.
-    const [, subscribed] = await Promise.all([
-      refreshSession(true),
-      hasActiveSubscription(),
-    ]);
-    navigate(subscribed ? redirectTo : "/pricing");
+    // Self-hosted access is not gated by an ArtCraft subscription.
+    await refreshSession(true);
+    navigate(redirectTo);
   };
 
   const handleGoogleError = (message: string) => {

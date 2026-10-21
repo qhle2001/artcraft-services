@@ -17,6 +17,7 @@ use crate::configs::storyteller_render::add_storyteller_render;
 use crate::configs::storyteller_studio::add_storyteller_studio;
 use crate::configs::tauri::add_tauri;
 use server_environment::ServerEnvironment;
+use url::Url;
 
 /// Return cors config for FakeYou / Vocodes / OBS / local development
 pub fn build_cors_config(server_environment: ServerEnvironment) -> Cors {
@@ -56,6 +57,29 @@ fn do_build_cors_config(is_production: bool) -> Cors {
   cors = add_artcraft_website(cors, is_production);
   cors = add_artcraft_admin_dashboard(cors, is_production);
   cors = add_realseedance(cors, is_production);
+
+  // Explicit exact origins for a separately hosted frontend. Keep this an
+  // allowlist because credentials are enabled below; never accept wildcards.
+  if let Ok(origins) = std::env::var("CORS_ALLOWED_ORIGINS") {
+    for value in origins.split(',').map(str::trim).filter(|value| !value.is_empty()) {
+      let parsed = Url::parse(value)
+        .unwrap_or_else(|_| panic!("Invalid origin in CORS_ALLOWED_ORIGINS: {value}"));
+      let is_local_http = parsed.scheme() == "http"
+        && matches!(parsed.host_str(), Some("localhost") | Some("127.0.0.1"));
+      if (parsed.scheme() != "https" && !is_local_http)
+        || parsed.host_str().is_none()
+        || parsed.username() != ""
+        || parsed.password().is_some()
+        || parsed.path() != "/"
+        || parsed.query().is_some()
+        || parsed.fragment().is_some()
+        || parsed.origin().ascii_serialization() != value.trim_end_matches('/')
+      {
+        panic!("CORS_ALLOWED_ORIGINS must contain exact HTTPS origins (HTTP localhost is allowed): {value}");
+      }
+      cors = cors.allowed_origin(value.trim_end_matches('/'));
+    }
+  }
 
   // Legacy
   cors = add_legacy_trumped(cors, is_production);

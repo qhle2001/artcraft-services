@@ -87,9 +87,10 @@ impl CoverImageLinks {
 fn thumbnail_template(media_domain: MediaDomain, server_environment: ServerEnvironment, rooted_path: &str) -> String {
   let host = cdn_link::get_cdn_host(media_domain, server_environment);
   match server_environment {
-    ServerEnvironment::Production => {
+    ServerEnvironment::Production if !cdn_link::has_custom_media_cdn() => {
       format!("{host}/cdn-cgi/image/width={{WIDTH}},quality={QUALITY}{rooted_path}")
     }
+    ServerEnvironment::Production => format!("{host}{rooted_path}"),
     ServerEnvironment::Development => {
       format!("{host}{rooted_path}")
     }
