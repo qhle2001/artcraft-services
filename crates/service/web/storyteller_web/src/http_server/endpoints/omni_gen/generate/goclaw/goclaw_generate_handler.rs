@@ -31,7 +31,28 @@ pub struct GoClawGenerateRequest {
   pub agent_id: String,
   pub prompt: String,
   #[serde(default)]
+  pub media_type: GoClawMediaType,
+  #[serde(default)]
   pub reference_media_tokens: Vec<MediaFileToken>,
+}
+
+#[derive(Clone, Copy, Default, Deserialize, ToSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum GoClawMediaType {
+  #[default]
+  Image,
+  Video,
+  Audio,
+}
+
+impl GoClawMediaType {
+  fn label(self) -> &'static str {
+    match self { Self::Image => "image", Self::Video => "video", Self::Audio => "audio" }
+  }
+
+  fn upload_kind(self) -> MediaUploadKind {
+    match self { Self::Image => MediaUploadKind::Image, Self::Video => MediaUploadKind::Video, Self::Audio => MediaUploadKind::Audio }
+  }
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -111,11 +132,13 @@ pub async fn goclaw_generate_handler(
   drop(mysql_connection);
 
   let mut message = format!(
-    "Generate one image for this request: {}\n\nWhen finished, return every generated image as a Markdown image link using a file URL served by this GoClaw instance (for example ![generated image](https://YOUR-GOCLAW/v1/files/FILE_ID)). Do not return base64 data or links to a different host.",
-    body.prompt.trim(),
+    "Generate one {} for this request: {}\n\nWhen finished, return every generated {} as a Markdown {} link using a file URL served by this GoClaw instance (for example {}(https://YOUR-GOCLAW/v1/files/FILE_ID)). Do not return base64 data or links to a different host.",
+    body.media_type.label(), body.prompt.trim(), body.media_type.label(),
+    if matches!(body.media_type, GoClawMediaType::Image) { "image" } else { "file" },
+    if matches!(body.media_type, GoClawMediaType::Image) { "![generated image]" } else { "[generated file]" },
   );
   if !resolved_media.ordered_url_list.is_empty() {
-    message.push_str("\n\nUse these reference images as visual input:\n");
+    message.push_str("\n\nUse these reference media files as input:\n");
     for (index, url) in resolved_media.ordered_url_list.iter().enumerate() {
       message.push_str(&format!("{}. {}\n", index + 1, url));
     }
@@ -130,27 +153,27 @@ pub async fn goclaw_generate_handler(
     log::error!("GoClaw agent wake failed: {:?}", err);
     CommonWebError::server_error_with_message("GoClaw agent generation failed")
   })?;
-  let image_urls = extract_markdown_image_urls(&content);
-  if image_urls.is_empty() || image_urls.len() > 8 {
+  let media_urls = extract_markdown_media_urls(&content, body.media_type);
+  if media_urls.is_empty() || media_urls.len() > 8 {
     return Err(CommonWebError::server_error_with_message(
-      "GoClaw agent did not return a supported image link",
+      "GoClaw agent did not return a supported media link",
     ));
   }
 
   let ip_address = get_request_ip(&request);
-  let mut media_tokens = Vec::with_capacity(image_urls.len());
-  for image_url in image_urls {
-    let media_bytes = client.download_generated_media(&image_url).await.map_err(|err| {
-      log::error!("Could not import generated GoClaw image: {:?}", err);
-      CommonWebError::server_error_with_message("Could not import generated image from GoClaw")
+  let mut media_tokens = Vec::with_capacity(media_urls.len());
+  for media_url in media_urls {
+    let media_bytes = client.download_generated_media(&media_url).await.map_err(|err| {
+      log::error!("Could not import generated GoClaw media: {:?}", err);
+      CommonWebError::server_error_with_message("Could not import generated media from GoClaw")
     })?;
     let media_token = upload_bytes_to_media_file(
       &server_state,
       &session.user_token,
       &ip_address,
       &media_bytes,
-      MediaUploadKind::Image,
-      "GoClaw generated image",
+      body.media_type.upload_kind(),
+      "GoClaw generated media",
     ).await?;
     media_tokens.push(media_token);
   }
@@ -180,15 +203,16 @@ fn make_client(url: &str, token: &str) -> Result<GoClawClient, CommonWebError> {
   })
 }
 
-fn extract_markdown_image_urls(content: &str) -> Vec<String> {
+fn extract_markdown_media_urls(content: &str, media_type: GoClawMediaType) -> Vec<String> {
   let mut urls = Vec::new();
   let mut rest = content;
   while let Some(start) = rest.find("](") {
-    let is_image = start > 0 && rest.as_bytes()[start - 1] == b'!';
+    let is_image = rest[..start].rfind('[')
+      .is_some_and(|open| open > 0 && rest.as_bytes()[open - 1] == b'!');
     rest = &rest[start + 2..];
     let Some(end) = rest.find(')') else { break };
     let candidate = rest[..end].trim().trim_start_matches('<').trim_end_matches('>');
-    if is_image && candidate.starts_with("https://") && !urls.iter().any(|url| url == candidate) {
+    if (is_image || !matches!(media_type, GoClawMediaType::Image)) && candidate.starts_with("https://") && !urls.iter().any(|url| url == candidate) {
       urls.push(candidate.to_string());
     }
     rest = &rest[end + 1..];
@@ -198,13 +222,21 @@ fn extract_markdown_image_urls(content: &str) -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
-  use super::extract_markdown_image_urls;
+  use super::{extract_markdown_media_urls, GoClawMediaType};
 
   #[test]
   fn extracts_unique_https_markdown_images_only() {
-    let urls = extract_markdown_image_urls(
+    let urls = extract_markdown_media_urls(
       "[link](https://example.com/not-image) ![one](https://goclaw.example/v1/files/one.png) ![same](https://goclaw.example/v1/files/one.png) ![two](http://example/two.png)",
+      GoClawMediaType::Image,
     );
     assert_eq!(urls, vec!["https://goclaw.example/v1/files/one.png".to_string()]);
+  }
+
+  #[test]
+  fn accepts_regular_markdown_links_for_video_and_audio() {
+    let content = "[video](https://goclaw.example/v1/files/video.mp4) [audio](https://goclaw.example/v1/media/audio.mp3)";
+    assert_eq!(extract_markdown_media_urls(content, GoClawMediaType::Video).len(), 2);
+    assert!(extract_markdown_media_urls(content, GoClawMediaType::Image).is_empty());
   }
 }

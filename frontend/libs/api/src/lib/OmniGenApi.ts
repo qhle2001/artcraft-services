@@ -42,6 +42,7 @@ export interface GoClawImageGenerateRequest {
   goclaw_api_token: string;
   agent_id: string;
   prompt: string;
+  media_type?: "image" | "video" | "audio";
   reference_media_tokens?: string[];
 }
 

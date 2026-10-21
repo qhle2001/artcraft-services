@@ -66,6 +66,8 @@ import { toast } from "../../components/toast/toast";
 import { useSignupCta } from "../../components/signup-cta-modal";
 import { useInsufficientCredits } from "../../components/insufficient-credits-modal";
 import { MicIcon, MicOffIcon, RepeatIcon, SparklesIcon } from "lucide-react";
+import { useGoClawStore, goClawAction } from "../../re-implement/goclaw/goClawStore";
+import { generateGoClawMedia } from "../../re-implement/goclaw/generateGoClawMedia";
 
 // ── Constants ────────────────────────────────────────────────────────────
 
@@ -121,6 +123,10 @@ export default function CreateAudio() {
 
   // Fetch models from API
   const { models: apiModels } = useOmniGenAudioModels();
+  const configuredAgents = useGoClawStore((state) => state.agents);
+  const audioAgents = useMemo(() => configuredAgents.filter((agent) => agent.type === "audio"), [configuredAgents]);
+  const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
+  const selectedAgent = audioAgents.find((agent) => agent.id === selectedAgentId);
 
   // UI state
   const ui = useCreateAudioStore((s) => s.ui);
@@ -161,15 +167,15 @@ export default function CreateAudio() {
   const hasPitch = supports(selectedModel?.pitch_supported);
   const hasTuning =
     !!sampleRateOptions?.length || hasSpeed || hasVolume || hasPitch;
-  const audioRefsSupported = supports(
+  const audioRefsSupported = !!selectedAgent || supports(
     selectedModel?.audio_references_supported,
   );
-  const maxAudioRefs = selectedModel?.audio_references_max ?? 1;
-  const imageRefsSupported = supports(
+  const maxAudioRefs = selectedAgent ? 6 : selectedModel?.audio_references_max ?? 1;
+  const imageRefsSupported = !!selectedAgent || supports(
     selectedModel?.image_references_supported,
   );
-  const maxImageRefs = selectedModel?.image_references_max ?? 1;
-  const requiresAudioRef = AUDIO_MODELS_REQUIRING_AUDIO_REF.has(
+  const maxImageRefs = selectedAgent ? 6 : selectedModel?.image_references_max ?? 1;
+  const requiresAudioRef = !selectedAgent && AUDIO_MODELS_REQUIRING_AUDIO_REF.has(
     selectedModel?.model ?? "",
   );
 
@@ -243,16 +249,25 @@ export default function CreateAudio() {
 
   const lightbox = useLightboxNav(flatItems);
 
-  const estimatedCredits = useAudioCostEstimate({
-    model: selectedModel?.model ?? "",
+  const modelEstimatedCredits = useAudioCostEstimate({
+    model: selectedAgent ? "" : selectedModel?.model ?? "",
     audioReferenceCount: referenceAudios.length,
     hasImageReference: referenceImages.length > 0,
     sampleRateHz: sampleRateOptions?.length ? sampleRateHz : undefined,
   });
+  const estimatedCredits = selectedAgent ? null : modelEstimatedCredits;
 
   const modelItems = useMemo(
-    () => buildModelPopoverItems(apiModels, selectedModel?.model ?? ""),
-    [apiModels, selectedModel?.model],
+    () => [
+      ...buildModelPopoverItems(apiModels, selectedAgent ? "" : selectedModel?.model ?? ""),
+      ...audioAgents.map((agent): PopoverItem => ({
+        label: agent.name,
+        description: `GoClaw · ${agent.description || "Audio agent"}`,
+        action: goClawAction(agent.id),
+        selected: agent.id === selectedAgentId,
+      })),
+    ],
+    [apiModels, selectedModel?.model, selectedAgent, audioAgents, selectedAgentId],
   );
 
   const hasContent =
@@ -265,14 +280,19 @@ export default function CreateAudio() {
   const missingRequiredAudioRef =
     requiresAudioRef && referenceAudios.length !== 1;
   const canGenerate =
-    !!prompt.trim() && !isGenerating && !missingRequiredAudioRef;
+    !!prompt.trim() && !isGenerating && (!missingRequiredAudioRef || !!selectedAgent);
 
   // ── Handlers ───────────────────────────────────────────────────────────
 
   const handleModelChange = useCallback(
     (item: PopoverItem) => {
+      if (item.action?.startsWith("goclaw-agent:")) {
+        setSelectedAgentId(item.action.slice("goclaw-agent:".length));
+        return;
+      }
       const model = item.action ? _modelLookup.get(item.action) : undefined;
       if (!model) return;
+      setSelectedAgentId(null);
       // Only switch the model — style/toggles/tuning are preserved and
       // resolved against the new model at read time, so the user's choices
       // survive model switches instead of resetting to defaults.
@@ -405,7 +425,32 @@ export default function CreateAudio() {
       openSignupCta();
       return;
     }
-    if (!prompt.trim() || isGenerating || !selectedModel) return;
+    if (!prompt.trim() || isGenerating || (!selectedModel && !selectedAgent)) return;
+
+    if (selectedAgent) {
+      setIsGenerating(true);
+      try {
+        const media = await generateGoClawMedia({
+          type: "audio",
+          agentId: selectedAgent.id,
+          prompt: prompt.trim(),
+          referenceMediaTokens: [
+            ...referenceAudios.map((item) => item.mediaToken),
+            ...referenceImages.map((item) => item.mediaToken),
+          ].filter((token): token is string => !!token),
+        });
+        if (!media.length) throw new Error("GoClaw returned no audio file.");
+        gallery.refresh();
+        toast.success(`GoClaw created ${media.length} audio file(s).`);
+      } catch (cause) {
+        toast.error(cause instanceof Error ? cause.message : "GoClaw generation failed");
+      } finally {
+        setIsGenerating(false);
+      }
+      return;
+    }
+
+    if (!selectedModel) return;
 
     if (missingRequiredAudioRef) {
       toast.error(
@@ -469,6 +514,8 @@ export default function CreateAudio() {
     prompt,
     isGenerating,
     selectedModel,
+    selectedAgent,
+    gallery.refresh,
     missingRequiredAudioRef,
     ui.stylePrompt,
     ui.isInstrumental,
@@ -865,6 +912,9 @@ export default function CreateAudio() {
                   panelClassName="w-[360px]"
                   richList
                   triggerIcon={
+                    selectedAgent ? (
+                      <SparklesIcon className="h-4 w-4" />
+                    ) : (
                     <img
                       src={getCreatorIconPathForModelId(
                         selectedModel?.model ?? "",
@@ -872,6 +922,7 @@ export default function CreateAudio() {
                       alt=""
                       className="h-4 w-4 icon-auto-contrast"
                     />
+                    )
                   }
                 />
               </Tooltip>

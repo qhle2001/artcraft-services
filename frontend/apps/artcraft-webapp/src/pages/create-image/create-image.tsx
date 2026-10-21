@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FilterMediaClasses } from "@storyteller/api";
-import type { GoClawAgentInfo, OmniGenImageModelInfo } from "@storyteller/api";
+import type { OmniGenImageModelInfo } from "@storyteller/api";
 import {
   PopoverMenu,
   type PopoverItem,
@@ -40,7 +40,7 @@ import {
   aspectRatioFromLabel,
 } from "./components/AspectRatioPicker";
 import { GenerationCountPicker } from "./components/GenerationCountPicker";
-import { GoClawConnectionDialog } from "./components/GoClawConnectionDialog";
+import { useGoClawStore } from "../../re-implement/goclaw/goClawStore";
 import {
   ResolutionPicker,
   buildResolutionItems,
@@ -123,12 +123,11 @@ export default function CreateImage() {
 
   // Fetch models from API
   const { models: apiModels } = useOmniGenImageModels();
-  const [goClawAgents, setGoClawAgents] = useState<GoClawAgentInfo[]>([]);
+  const configuredGoClawAgents = useGoClawStore((state) => state.agents);
+  const goClawAgents = useMemo(() => configuredGoClawAgents.filter((agent) => agent.type === "image"), [configuredGoClawAgents]);
   const [selectedGoClawAgentId, setSelectedGoClawAgentId] = useState<string | null>(null);
-  const [goClawUrl, setGoClawUrl] = useState(() =>
-    typeof window === "undefined" ? "" : window.localStorage.getItem("artcraft.goclaw.url") ?? "",
-  );
-  const [goClawApiToken, setGoClawApiToken] = useState("");
+  const goClawUrl = useGoClawStore((state) => state.url);
+  const goClawApiToken = useGoClawStore((state) => state.token);
 
   // UI state
   const ui = useCreateImageStore((s) => s.ui);
@@ -640,25 +639,6 @@ export default function CreateImage() {
               onSelect={handleModelChange}
             />
           </div>
-          <GoClawConnectionDialog
-            url={goClawUrl}
-            apiToken={goClawApiToken}
-            agents={goClawAgents}
-            onConnected={(url, token, agents) => {
-              window.localStorage.setItem("artcraft.goclaw.url", url);
-              setGoClawUrl(url);
-              setGoClawApiToken(token);
-              setGoClawAgents(agents);
-              setSelectedGoClawAgentId(null);
-            }}
-            onDisconnected={() => {
-              window.localStorage.removeItem("artcraft.goclaw.url");
-              setGoClawUrl("");
-              setGoClawApiToken("");
-              setGoClawAgents([]);
-              setSelectedGoClawAgentId(null);
-            }}
-          />
         </div>
       }
       frames={
@@ -835,25 +815,6 @@ export default function CreateImage() {
                     }
                   />
                 </Tooltip>
-                <GoClawConnectionDialog
-                  url={goClawUrl}
-                  apiToken={goClawApiToken}
-                  agents={goClawAgents}
-                  onConnected={(url, token, agents) => {
-                    window.localStorage.setItem("artcraft.goclaw.url", url);
-                    setGoClawUrl(url);
-                    setGoClawApiToken(token);
-                    setGoClawAgents(agents);
-                    setSelectedGoClawAgentId(null);
-                  }}
-                  onDisconnected={() => {
-                    window.localStorage.removeItem("artcraft.goclaw.url");
-                    setGoClawUrl("");
-                    setGoClawApiToken("");
-                    setGoClawAgents([]);
-                    setSelectedGoClawAgentId(null);
-                  }}
-                />
               </div>
             }
             leftToolbar={

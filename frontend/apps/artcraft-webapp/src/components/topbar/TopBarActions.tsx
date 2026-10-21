@@ -262,6 +262,13 @@ export function TopBarActions({ className }: { className?: string }) {
           >
             Login
           </Link>
+          <button
+            type="button"
+            onClick={() => setSettingsOpen(true)}
+            className="h-8 rounded-[3px] border border-white/15 px-3 font-mono text-[11px] font-semibold uppercase tracking-[0.12em] text-white/80 hover:bg-white/10"
+          >
+            Settings
+          </button>
           <Link
             to="/signup"
             className="h-8 flex items-center gap-1.5 px-3.5 rounded-[3px] font-mono text-[11px] font-semibold uppercase tracking-[0.12em] text-black bg-white hover:bg-white/80 transition-colors"

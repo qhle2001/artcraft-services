@@ -84,6 +84,8 @@ import {
 import { useSignupCta } from "../../components/signup-cta-modal";
 import { useInsufficientCredits } from "../../components/insufficient-credits-modal";
 import { toast } from "../../components/toast/toast";
+import { useGoClawStore, goClawAction } from "../../re-implement/goclaw/goClawStore";
+import { generateGoClawMedia } from "../../re-implement/goclaw/generateGoClawMedia";
 
 // ── Constants ────────────────────────────────────────────────────────────
 
@@ -293,6 +295,10 @@ export default function CreateVideo() {
 
   // Fetch models from API
   const { models: apiModels } = useOmniGenVideoModels();
+  const configuredAgents = useGoClawStore((state) => state.agents);
+  const videoAgents = useMemo(() => configuredAgents.filter((agent) => agent.type === "video"), [configuredAgents]);
+  const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
+  const selectedAgent = videoAgents.find((agent) => agent.id === selectedAgentId);
 
   // UI state
   const ui = useCreateVideoStore((s) => s.ui);
@@ -315,13 +321,13 @@ export default function CreateVideo() {
     return model;
   }, [apiModels, ui.selectedModelId]);
 
-  const requiresImageInput = selectedModel?.text_to_video_supported === false;
+  const requiresImageInput = !selectedAgent && selectedModel?.text_to_video_supported === false;
 
   // Soft prompt limit from the API; undefined = unlimited. Seedance waives
   // the limit (Infinity) when the prompt contains Chinese characters: the
   // server counts CJK as more than one unit, so a client-side character
   // count would false-positive.
-  const maxPromptLength = selectedModel
+  const maxPromptLength = selectedModel && !selectedAgent
     ? effectivePromptMaxLength(
         selectedModel.model,
         selectedModel.text_prompt_max_length ?? undefined,
@@ -502,16 +508,16 @@ export default function CreateVideo() {
   const hasOutputFormatOptions =
     (selectedModel?.output_format_options?.length ?? 0) > 0;
   const hasSound = !!selectedModel?.show_generate_with_sound_toggle;
-  const supportsImagePrompts =
+  const supportsImagePrompts = !!selectedAgent ||
     !!selectedModel?.starting_keyframe_supported ||
     !!selectedModel?.starting_keyframe_required ||
     !!selectedModel?.image_references_supported;
-  const supportsVideoRefs = !!selectedModel?.video_references_supported;
-  const supportsAudioRefs = !!selectedModel?.audio_references_supported;
-  const maxVideoRefs = selectedModel?.video_references_max ?? 3;
+  const supportsVideoRefs = !!selectedAgent || !!selectedModel?.video_references_supported;
+  const supportsAudioRefs = !!selectedAgent || !!selectedModel?.audio_references_supported;
+  const maxVideoRefs = selectedAgent ? 6 : selectedModel?.video_references_max ?? 3;
   const maxVideoRefDuration =
     selectedModel?.video_references_max_total_duration_seconds ?? 30;
-  const supportsRefMode =
+  const supportsRefMode = !!selectedAgent ||
     !!selectedModel?.image_references_supported ||
     supportsVideoRefs ||
     supportsAudioRefs;
@@ -521,7 +527,7 @@ export default function CreateVideo() {
     selectedModel?.ending_keyframe_supported && !isReferenceMode
   );
   const needsImage =
-    !!selectedModel?.starting_keyframe_required && referenceImages.length === 0;
+    !selectedAgent && !!selectedModel?.starting_keyframe_required && referenceImages.length === 0;
 
   // Effective duration: keep the user's chosen seconds when the model supports
   // them, else clamp/snap to this model's range for display + generation. The
@@ -589,8 +595,8 @@ export default function CreateVideo() {
       ? referenceAudios.reduce((sum, aud) => sum + aud.duration, 0) * 1000
       : undefined;
 
-  const estimatedCredits = useVideoCostEstimate({
-    model: selectedModel?.model ?? "",
+  const modelEstimatedCredits = useVideoCostEstimate({
+    model: selectedAgent ? "" : selectedModel?.model ?? "",
     aspectRatio: selectedSize,
     resolution,
     bitrate,
@@ -605,6 +611,7 @@ export default function CreateVideo() {
     totalInputVideoDurationMillis,
     totalInputAudioDurationMillis,
   });
+  const estimatedCredits = selectedAgent ? null : modelEstimatedCredits;
 
   // Character @-mentions are driven by the model's capability flag (set by the
   // API), in both keyframe and reference input modes — except models we're
@@ -670,8 +677,16 @@ export default function CreateVideo() {
       : "Describe the video you want to generate...";
 
   const modelItems = useMemo(
-    () => buildModelPopoverItems(apiModels, selectedModel?.model ?? ""),
-    [apiModels, selectedModel?.model],
+    () => [
+      ...buildModelPopoverItems(apiModels, selectedAgent ? "" : selectedModel?.model ?? ""),
+      ...videoAgents.map((agent): PopoverItem => ({
+        label: agent.name,
+        description: `GoClaw · ${agent.description || "Video agent"}`,
+        action: goClawAction(agent.id),
+        selected: agent.id === selectedAgentId,
+      })),
+    ],
+    [apiModels, selectedModel?.model, selectedAgent, videoAgents, selectedAgentId],
   );
   // Family-grouped variant for the desktop picker. The mobile bottom sheet
   // keeps the flat `modelItems` (no flyouts on touch).
@@ -680,7 +695,7 @@ export default function CreateVideo() {
     () =>
       modelPickerStyle === "grouped"
         ? groupModelItems(modelItems, (item) =>
-            getModelFamilyName(
+          item.action?.startsWith("goclaw-agent:") ? "GoClaw Agents" : getModelFamilyName(
               item.action,
               modelCreatorFromBackend(
                 item.action
@@ -967,8 +982,13 @@ export default function CreateVideo() {
 
   const handleModelChange = useCallback(
     (item: PopoverItem) => {
+      if (item.action?.startsWith("goclaw-agent:")) {
+        setSelectedAgentId(item.action.slice("goclaw-agent:".length));
+        return;
+      }
       const model = item.action ? _modelLookup.get(item.action) : undefined;
       if (!model) return;
+      setSelectedAgentId(null);
       const currentState = useCreateVideoStore.getState().ui;
 
       const newSupportsKeyframe =
@@ -1255,6 +1275,37 @@ export default function CreateVideo() {
       openSignupCta();
       return;
     }
+    if (selectedAgent) {
+      if (!prompt.trim() || isGeneratingRef.current) return;
+      isGeneratingRef.current = true;
+      setIsGenerating(true);
+      const batchId = startBatch(prompt, selectedAgent.name);
+      try {
+        const media = await generateGoClawMedia({
+          type: "video",
+          agentId: selectedAgent.id,
+          prompt: prompt.trim(),
+          referenceMediaTokens: [
+            ...referenceImages.map((item) => item.mediaToken),
+            endFrameImage?.mediaToken,
+            ...referenceVideos.map((item) => item.mediaToken),
+            ...referenceAudios.map((item) => item.mediaToken),
+          ].filter((token): token is string => !!token),
+        });
+        if (!media.length) throw new Error("GoClaw returned no video file.");
+        completeBatch(batchId, media[0]);
+        gallery.refresh();
+        window.dispatchEvent(new Event("task-queue-update"));
+      } catch (cause) {
+        const reason = cause instanceof Error ? cause.message : "GoClaw generation failed";
+        toast.error(reason);
+        failBatch(batchId, reason);
+      } finally {
+        setIsGenerating(false);
+        isGeneratingRef.current = false;
+      }
+      return;
+    }
     if (needsImage) {
       toast.error(
         "Add a starting frame — this model can't generate from text alone.",
@@ -1454,6 +1505,8 @@ export default function CreateVideo() {
     needsImage,
     isReferenceMode,
     selectedModel,
+    selectedAgent,
+    gallery.refresh,
     maxPromptLength,
     selectedSize,
     numVideos,
@@ -1825,6 +1878,9 @@ export default function CreateVideo() {
                   panelClassName="w-[280px]"
                   richList
                   triggerIcon={
+                    selectedAgent ? (
+                      <SparklesIcon className="h-4 w-4" />
+                    ) : (
                     <img
                       src={getCreatorIconPathForModelId(
                         selectedModel?.model ?? "",
@@ -1832,6 +1888,7 @@ export default function CreateVideo() {
                       alt=""
                       className="h-4 w-4 icon-auto-contrast"
                     />
+                    )
                   }
                 />
               </Tooltip>
