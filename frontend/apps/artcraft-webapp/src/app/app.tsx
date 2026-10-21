@@ -49,7 +49,6 @@ import { InsufficientCreditsModal } from "../components/insufficient-credits-mod
 import { GlobalActionReminder } from "../components/global-action-reminder";
 import { useSession } from "../lib/session";
 import { DesktopLogin } from "../pages/login/desktop-login";
-import { GoClawSettingsPage } from "../re-implement/goclaw/GoClawSettingsPage";
 
 function ScrollToTop() {
   const { pathname } = useLocation();
@@ -162,8 +161,6 @@ export function App() {
             inside the create pages pop a signup CTA modal for logged-out users. */}
         <Route element={<ProtectedLayout />}>
           <Route path="/" element={<Home />} />
-          <Route path="/settings" element={<Navigate to="/settings/goclaw" replace />} />
-          <Route path="/settings/goclaw" element={<GoClawSettingsPage />} />
           <Route path="/create-image" element={<CreateImage />} />
           <Route path="/create-video" element={<CreateVideo />} />
           <Route path="/create-audio" element={<CreateAudio />} />
