@@ -51,7 +51,8 @@ import { useOmniGenAudioModels } from "@storyteller/omni-gen";
 import { toast } from "../../components/toast/toast";
 import { useSignupCta } from "../../components/signup-cta-modal";
 import { MicIcon, MicOffIcon, RepeatIcon, SparklesIcon } from "lucide-react";
-import { useGoClawStore, goClawAction } from "../../re-implement/goclaw/goClawStore";
+import { goClawAction } from "../../re-implement/goclaw/goClawStore";
+import { useGoClawAgents } from "../../re-implement/goclaw/useGoClawAgents";
 import { generateGoClawMedia } from "../../re-implement/goclaw/generateGoClawMedia";
 
 // ── Constants ────────────────────────────────────────────────────────────
@@ -81,7 +82,7 @@ export default function CreateAudio() {
 
   // Fetch models from API
   const { models: apiModels } = useOmniGenAudioModels();
-  const configuredAgents = useGoClawStore((state) => state.agents);
+  const { agents: configuredAgents } = useGoClawAgents();
   const audioAgents = useMemo(() => configuredAgents.filter((agent) => agent.type === "audio"), [configuredAgents]);
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
   const selectedAgent =
@@ -357,7 +358,7 @@ export default function CreateAudio() {
       return;
     }
     if (!selectedAgent) {
-      toast.error("Configure a GoClaw audio agent in Settings before generating.");
+      toast.error("No GoClaw audio agent is available. Contact the server administrator.");
       return;
     }
     if (!prompt.trim() || isGenerating) return;
@@ -536,7 +537,7 @@ export default function CreateAudio() {
       placeholder={
         audioAgents.length
           ? "Describe the music or sound you want..."
-          : "Configure a GoClaw audio agent in Settings first..."
+          : "No audio agent is available..."
       }
       autoAdvance={loggedIn && canGenerate}
       modelField={
@@ -749,7 +750,7 @@ export default function CreateAudio() {
             placeholder={
               audioAgents.length
                 ? "Describe the music or sound you want..."
-                : "Configure a GoClaw audio agent in Settings first..."
+                : "No audio agent is available..."
             }
             supportsImagePrompts={imageRefsSupported}
             maxImagePromptCount={maxImageRefs}

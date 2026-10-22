@@ -37,7 +37,7 @@ Run the backend and supporting services on infrastructure controlled by the proj
 - [x] Keep database, cache, search, and object-storage ports private; publish the API on loopback for a host TLS reverse proxy.
 - [x] Seed standard `user`, `mod`, and `admin` roles idempotently after migrations.
 - [x] Configure a self-hosted HTTPS media origin for browser links and GoClaw reference files.
-- [x] Add a secret template for production cookie settings, GoClaw encryption key, database/storage credentials, and the startup-required integration placeholders.
+- [x] Add production cookie/database/storage templates and a backend-only GoClaw JSON config mounted read-only; include startup-required integration placeholders.
 - [x] Document account/email setup, moderator bootstrap, billing behavior, backup/restore, upgrades, monitoring endpoint, and current worker/network limitations.
 - [ ] Complete browser-facing API host setup in Plan 5 and media delivery design in Plan 4 before production use.
 - [ ] Replace the current Resend password-reset dependency and hard-coded `getartcraft.com` reset link if the deployment must have no external service besides GoClaw.

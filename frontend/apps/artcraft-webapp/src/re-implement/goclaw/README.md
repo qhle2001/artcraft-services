@@ -1,7 +1,7 @@
 # GoClaw integration for the ArtCraft webapp
 
-This directory contains the custom GoClaw settings, browser-local agent selections, and media generation helper. The existing Settings modal and Create Image/Video/Audio pages contain only the integration points needed to expose it.
+This directory contains agent loading, an in-memory agent store, and the media generation helper used by Create Image/Video/Audio.
 
-Agent type is assigned by the user because GoClaw's agent list returns an ID, name and description without a reliable image/video/audio capability field. The browser saves agent selections locally. It sends the token only when an administrator saves or rotates the instance configuration; the API never returns that token. The backend owns agent listing and generation using its stored configuration.
+The backend administrator defines the URL, API token, and each agent's ID, name, description and media type in `build/selfhost/re-implement/goclaw/config.json`. The frontend automatically loads non-secret agent metadata from `GET /v1/omni_gen/goclaw/agents/configured` after login. The browser neither configures the connection nor receives its URL or token. Old browser configuration is discarded.
 
-Agents can be entered manually by ID to preview model pickers on a static deployment. This does not verify an agent or enable generation without the backend.
+Generation still goes through the authenticated backend, which validates the selected agent against the file. Reload the page after editing the server file to refresh the model pickers. There is no GoClaw Settings tab or manual agent editor.

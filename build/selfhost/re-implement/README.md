@@ -64,9 +64,10 @@ cookie sessions (for example `.example.com` for `app.example.com` and
    account. Set long random MySQL, S3, cookie, and sort-key secrets. Use URL-safe
    alphanumeric MySQL credentials because `MYSQL_URL` embeds the password in a URL.
    Docker Compose v2.23 or newer is required for the inline S3 config.
-2. Generate a 32-byte GoClaw encryption key and Base64 encode it (for example,
-   `openssl rand -base64 32`). Put it in `GOCLAW_CONFIG_ENCRYPTION_KEY`. Back it up
-   separately from the database. Losing it makes the saved GoClaw token unrecoverable.
+2. Copy `goclaw/config.example.json` to `goclaw/config.json`. Set the GoClaw URL,
+   API token and each agent's ID, name and `type` (`image`, `video`, or `audio`).
+   Restrict access to this file: it contains the token in plaintext. Compose mounts
+   its directory read-only into the backend. The real config is gitignored.
 3. Set `RESEND_API_KEY` and configure the verified sender/domain required for account
    verification and password recovery. Current backend startup still requires the
    listed provider and Stripe environment variables. The `unset` placeholders allow
@@ -80,10 +81,11 @@ cookie sessions (for example `.example.com` for `app.example.com` and
    it.
 5. Configure the host reverse proxy for TLS and forward requests to `127.0.0.1:12345`.
    Set the frontend API host separately as described in Plan 5. Sign up through the
-   deployed application, confirm the account email, and grant the owner account the
-   existing moderator/admin role through a controlled database administration
-   process before saving instance-wide GoClaw settings.
-6. Configure the GoClaw URL and token in Settings. The backend currently requires
+   deployed application and confirm the account email. GoClaw connection settings
+   are managed through the server file; there is no frontend GoClaw Settings tab.
+6. The frontend loads the configured agents automatically. To change the connection
+   or agents, replace `goclaw/config.json` atomically and reload the frontend page.
+   The backend re-reads the file per request. The backend currently requires
    GoClaw to use HTTPS and resolve only to public IP addresses; a private-only GoClaw
    endpoint is not supported by the current client implementation.
 
@@ -101,9 +103,9 @@ billing service or replace those screens and backend routes.
 MySQL and SeaweedFS volumes contain durable user and media data. Back them up to an
 off-host encrypted location on a regular schedule and before upgrades. Use a consistent
 MySQL backup (for example, `mysqldump --single-transaction`) and a SeaweedFS volume
-snapshot/backup procedure appropriate to the storage backend. Keep the GoClaw
-encryption key with the protected recovery materials, separately from the backup
-destination. Redis is cache/session infrastructure and Elasticsearch is a search
+snapshot/backup procedure appropriate to the storage backend. Keep a protected
+backup of `goclaw/config.json`, which includes the GoClaw API token.
+Redis is cache/session infrastructure and Elasticsearch is a search
 index; the application may need users to sign in again if Redis is lost, and search
 recovery/reindexing should be planned before treating Elasticsearch as disposable.
 Perform restore drills on an isolated host and verify login, media retrieval, and a
@@ -122,7 +124,7 @@ backup while its writes are stopped, or use the snapshot/replication mechanism o
 chosen production object-storage service. Keep a tested restore procedure; do not use
 `docker compose down -v` for routine stops or upgrades.
 
-Upgrade by backing up MySQL, media storage, and the GoClaw key; deploy the reviewed
+Upgrade by backing up MySQL, media storage, and the GoClaw config; deploy the reviewed
 new image; let the one-shot migration service apply pending migrations; then verify
 `/_status`, authentication, media reads/writes, and GoClaw. Keep the previous image
 available for rollback. A database migration may not be reversible after new writes,

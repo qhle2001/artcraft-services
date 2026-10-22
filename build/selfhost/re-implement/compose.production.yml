@@ -138,7 +138,9 @@ services:
       COOKIE_SECURE: "true"
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:?Set CORS_ALLOWED_ORIGINS in .env}
       MEDIA_CDN_BASE_URL: ${MEDIA_CDN_BASE_URL:?Set MEDIA_CDN_BASE_URL in .env}
-      GOCLAW_CONFIG_ENCRYPTION_KEY: ${GOCLAW_CONFIG_ENCRYPTION_KEY:?Set GOCLAW_CONFIG_ENCRYPTION_KEY in .env}
+      GOCLAW_CONFIG_FILE: /etc/artcraft/goclaw/config.json
+    volumes:
+      - ./goclaw:/etc/artcraft/goclaw:ro
     ports:
       - "${API_BIND_HOST:-127.0.0.1}:${API_BIND_PORT:-12345}:12345"
 

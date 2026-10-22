@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import { Modal } from "@storyteller/ui-modal";
 import {
   CreditCardIcon,
-  CableIcon,
   KeyIcon,
   KeyboardIcon,
   SettingsIcon,
@@ -19,9 +18,8 @@ import { useSession } from "../../lib/session";
 import { AccountSection } from "./AccountSection";
 import { ApiKeySection } from "./ApiKeySection";
 import { BillingSection } from "./BillingSection";
-import { GoClawSettings } from "../../re-implement/goclaw/GoClawSettings";
 
-type Tab = "general" | "goclaw" | "keybinds" | "account" | "billing" | "apiKeys";
+type Tab = "general" | "keybinds" | "account" | "billing" | "apiKeys";
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -30,7 +28,6 @@ interface SettingsModalProps {
 
 const TABS: { id: Tab; label: string; icon: typeof SettingsIcon }[] = [
   { id: "general", label: "General", icon: SettingsIcon },
-  { id: "goclaw", label: "GoClaw", icon: CableIcon },
   { id: "keybinds", label: "Keybinds", icon: KeyboardIcon },
   { id: "account", label: "Account", icon: UserIcon },
   { id: "billing", label: "Billing", icon: CreditCardIcon },
@@ -91,7 +88,6 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
             </div>
             <div className="h-full p-4 text-sm sm:p-3 sm:ps-0">
               {tab === "general" && <GeneralPanel />}
-              {tab === "goclaw" && <GoClawSettings />}
               {tab === "keybinds" && (
                 <div className="pb-4">
                   <KeybindsSettings />

@@ -72,7 +72,8 @@ import {
 import { effectivePromptMaxLength } from "@storyteller/model-list";
 import { useSignupCta } from "../../components/signup-cta-modal";
 import { toast } from "../../components/toast/toast";
-import { useGoClawStore, goClawAction } from "../../re-implement/goclaw/goClawStore";
+import { goClawAction } from "../../re-implement/goclaw/goClawStore";
+import { useGoClawAgents } from "../../re-implement/goclaw/useGoClawAgents";
 import { generateGoClawMedia } from "../../re-implement/goclaw/generateGoClawMedia";
 
 // ── Constants ────────────────────────────────────────────────────────────
@@ -244,7 +245,7 @@ export default function CreateVideo() {
 
   // Fetch models from API
   const { models: apiModels } = useOmniGenVideoModels();
-  const configuredAgents = useGoClawStore((state) => state.agents);
+  const { agents: configuredAgents } = useGoClawAgents();
   const videoAgents = useMemo(() => configuredAgents.filter((agent) => agent.type === "video"), [configuredAgents]);
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
   const selectedAgent =
@@ -589,7 +590,7 @@ export default function CreateVideo() {
     referenceAudios.length > 0;
   const promptPlaceholder =
     !videoAgents.length
-      ? "Configure a GoClaw video agent in Settings first..."
+      ? "No video agent is available..."
       : isSeedance2Model && isReferenceMode && hasUploadedRefs
       ? "Describe your video. Use @Image1, @Video1... to reference your uploads"
       : "Describe the video you want to generate...";
@@ -1144,7 +1145,7 @@ export default function CreateVideo() {
       return;
     }
     if (!selectedAgent) {
-      toast.error("Configure a GoClaw video agent in Settings before generating.");
+      toast.error("No GoClaw video agent is available. Contact the server administrator.");
       return;
     }
     if (selectedAgent) {

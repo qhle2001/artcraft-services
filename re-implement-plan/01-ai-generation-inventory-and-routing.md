@@ -21,7 +21,7 @@ Identify every AI generation flow in the frontend and backend, then make the sel
 - Image generation submits only to `/v1/omni_gen/generate/goclaw`; video and audio use the existing GoClaw helper and the same backend route.
 - Provider cost estimates, model-specific output controls, and batch-count controls are hidden for these GoClaw flows because the current GoClaw request contract accepts a prompt and reference media, then returns one or more files.
 - The existing backend GoClaw route already supports image, video, and audio request types, so this pass reuses it without adding a backend source file.
-- This pass uses the existing request contract, which still sends the GoClaw URL/token from the browser. Complete Plan 2 before treating the connection flow as backend-managed or production-hardened.
+- Connection credentials and agent definitions now come from a backend-only JSON file (Plan 2). Frontend requests carry agent ID, media type, prompt and reference tokens; they never carry the GoClaw URL/token.
 
 ## Remaining generation workflows
 

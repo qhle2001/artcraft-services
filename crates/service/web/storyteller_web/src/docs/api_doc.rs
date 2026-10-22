@@ -397,9 +397,12 @@ use artcraft_api_defs::media_file::project::upload_new_scene_3d_project::*;
 // Handler modules with locally-defined types
 use crate::http_server::endpoints::moderation::info::moderator_token_info_handler::*;
 use crate::http_server::endpoints::omni_gen::generate::goclaw::goclaw_generate_handler::{
-  GoClawAgentInfo, GoClawAgentListResponse, GoClawConnectionRequest,
-  GoClawGenerateRequest, GoClawGenerateResponse,
+  GoClawAgentInfo, GoClawGenerateRequest, GoClawGenerateResponse, GoClawMediaType,
 };
+use crate::http_server::endpoints::omni_gen::generate::goclaw::re_implement::agents_handlers::{
+  ConfiguredGoClawAgentsResponse, GoClawAgentsResponse,
+};
+use crate::http_server::endpoints::omni_gen::generate::goclaw::re_implement::file_config::ConfiguredGoClawAgent;
 use artcraft_api_defs::characters::create_character::*;
 use artcraft_api_defs::characters::delete_character::*;
 use artcraft_api_defs::characters::edit_character::*;
@@ -777,11 +780,13 @@ use crate::http_server::endpoints::media_files::list::list_batch_generated_redux
     crate::http_server::endpoints::image_studio::update_gpt_image_job_status_handler::update_gpt_image_job_status_handler,
   ),
   components(schemas(
+    ConfiguredGoClawAgent,
+    ConfiguredGoClawAgentsResponse,
     GoClawAgentInfo,
-    GoClawAgentListResponse,
-    GoClawConnectionRequest,
+    GoClawAgentsResponse,
     GoClawGenerateRequest,
     GoClawGenerateResponse,
+    GoClawMediaType,
     DataboxDashboardEntry,
     ListDataboxDashboardsResponse,
     ModeratorGetUserSpendSummaryResponse,

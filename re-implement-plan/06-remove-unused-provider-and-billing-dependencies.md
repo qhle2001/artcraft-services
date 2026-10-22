@@ -8,7 +8,7 @@ Ensure GoClaw generation does not require Storyteller AI providers or an AI subs
 
 - [x] Confirm in-scope image/video/audio generation uses the GoClaw endpoint and does not require provider costs or credits (Plan 1 implementation).
 - [x] Remove ArtCraft subscription redirects after Google signup/login, Google sign-in from the generation prompt, and password reset. Password login and desktop login bridge already continued without a subscription check.
-- [x] Keep GoClaw usage limits and provider costs under the GoClaw deployment; its Settings page documents this and generation does not debit ArtCraft AI credits.
+- [x] Keep GoClaw usage limits and provider costs under the GoClaw deployment; the backend reads its connection and agents from a private JSON file, and generation does not debit ArtCraft AI credits.
 - [x] Keep legacy billing and non-GoClaw generation paths unchanged; document that Stripe/provider placeholders satisfy startup parsing only.
 - [x] Inventory known external dependencies in the self-host guide: providers for out-of-scope generation, Stripe, Resend, Google OAuth, direct segmentation, funnel/CDN targets, and the development-only API proxy default.
 - [ ] Configure, replace, or disable each retained external integration before claiming the entire product is independent of Storyteller/provider/billing services.

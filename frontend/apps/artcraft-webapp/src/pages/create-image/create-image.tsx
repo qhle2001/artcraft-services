@@ -38,7 +38,7 @@ import {
   buildAspectRatioItems,
   aspectRatioFromLabel,
 } from "./components/AspectRatioPicker";
-import { useGoClawStore } from "../../re-implement/goclaw/goClawStore";
+import { useGoClawAgents } from "../../re-implement/goclaw/useGoClawAgents";
 import {
   ResolutionPicker,
   buildResolutionItems,
@@ -78,7 +78,7 @@ export default function CreateImage() {
 
   // Fetch models from API
   const { models: apiModels } = useOmniGenImageModels();
-  const configuredGoClawAgents = useGoClawStore((state) => state.agents);
+  const { agents: configuredGoClawAgents } = useGoClawAgents();
   const goClawAgents = useMemo(() => configuredGoClawAgents.filter((agent) => agent.type === "image"), [configuredGoClawAgents]);
   const [selectedGoClawAgentId, setSelectedGoClawAgentId] = useState<string | null>(null);
 
@@ -387,7 +387,7 @@ export default function CreateImage() {
     }
     if (!prompt.trim() || isGenerating) return;
     if (!selectedGoClawAgent) {
-      toast.error("Configure a GoClaw image agent in Settings before generating.");
+      toast.error("No GoClaw image agent is available. Contact the server administrator.");
       return;
     }
 
@@ -521,7 +521,7 @@ export default function CreateImage() {
       placeholder={
         goClawAgents.length
           ? "Describe what you want in the image..."
-          : "Configure a GoClaw image agent in Settings first..."
+          : "No image agent is available..."
       }
       autoAdvance={loggedIn && !!prompt.trim() && !isGenerating}
       modelField={
@@ -668,7 +668,7 @@ export default function CreateImage() {
             placeholder={
               goClawAgents.length
                 ? "Describe what you want in the image..."
-                : "Configure a GoClaw image agent in Settings first..."
+                : "No image agent is available..."
             }
             supportsImagePrompts={supportsImagePrompts}
             maxImagePromptCount={maxImageRefs}

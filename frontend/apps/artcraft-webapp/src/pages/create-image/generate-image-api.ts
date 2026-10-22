@@ -23,7 +23,7 @@ export async function enqueueImageGeneration(
   if (!params.agentId) {
     return {
       success: false,
-      error: "Configure the GoClaw connection and image agent in Settings before generating.",
+      error: "No GoClaw image agent is available. Contact the server administrator.",
     };
   }
 

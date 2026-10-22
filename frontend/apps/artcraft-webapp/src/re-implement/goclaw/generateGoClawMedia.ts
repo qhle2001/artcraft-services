@@ -14,7 +14,7 @@ export async function generateGoClawMedia(args: {
 
   const { agents } = useGoClawStore.getState();
   if (!agents.some((agent) => agent.id === args.agentId && agent.type === args.type)) {
-    throw new Error("Configure this GoClaw connection and agent in Settings before generating.");
+    throw new Error("No GoClaw agent is available for this media type. Contact the server administrator.");
   }
   const response = await new OmniGenApi().generateImageWithGoClaw({
     agent_id: args.agentId,

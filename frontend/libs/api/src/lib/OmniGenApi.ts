@@ -55,14 +55,8 @@ export interface GoClawAgentInfo {
   description: string;
 }
 
-export interface GoClawSettingsRequest {
-  goclaw_url: string;
-  goclaw_api_token: string;
-}
-
-export interface GoClawSettingsResponse {
-  configured: boolean;
-  goclaw_url: string | null;
+export interface ConfiguredGoClawAgentInfo extends GoClawAgentInfo {
+  type: "image" | "video" | "audio";
 }
 
 // ── Video request / response types ───────────────────────────────────────
@@ -622,24 +616,9 @@ export class OmniGenApi extends ApiManager {
     });
   }
 
-  public async saveGoClawSettings(
-    body: GoClawSettingsRequest,
-  ): Promise<GoClawSettingsResponse> {
-    return this.put<GoClawSettingsRequest, GoClawSettingsResponse>({
-      endpoint: `${this.getApiSchemeAndHost()}/v1/omni_gen/goclaw/settings`,
-      body,
-    });
-  }
-
-  public async getGoClawSettings(): Promise<GoClawSettingsResponse> {
-    return this.get<GoClawSettingsResponse>({
-      endpoint: `${this.getApiSchemeAndHost()}/v1/omni_gen/goclaw/settings`,
-    });
-  }
-
-  public async clearGoClawSettings(): Promise<GoClawSettingsResponse> {
-    return this.delete<Record<string, unknown>, GoClawSettingsResponse>({
-      endpoint: `${this.getApiSchemeAndHost()}/v1/omni_gen/goclaw/settings`,
+  public async getConfiguredGoClawAgents(): Promise<{ agents: ConfiguredGoClawAgentInfo[] }> {
+    return this.get<{ agents: ConfiguredGoClawAgentInfo[] }>({
+      endpoint: `${this.getApiSchemeAndHost()}/v1/omni_gen/goclaw/agents/configured`,
     });
   }
 

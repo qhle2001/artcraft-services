@@ -101,3 +101,6 @@ windows/sqlite/sqlite3.lib
 crates/desktop/src-tauri/*.dll
 windows_dlls/
 
+# Backend-only GoClaw configuration contains a private API token.
+/build/selfhost/re-implement/goclaw/config.json
+

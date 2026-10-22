@@ -1,0 +1,24 @@
+{
+  "url": "https://goclaw.example.com",
+  "api_token": "REPLACE_WITH_GOCLAW_TOKEN",
+  "agents": [
+    {
+      "id": "your-image-agent-id",
+      "name": "Image Agent",
+      "description": "Generate images",
+      "type": "image"
+    },
+    {
+      "id": "your-video-agent-id",
+      "name": "Video Agent",
+      "description": "Generate videos",
+      "type": "video"
+    },
+    {
+      "id": "your-audio-agent-id",
+      "name": "Audio Agent",
+      "description": "Generate audio",
+      "type": "audio"
+    }
+  ]
+}
